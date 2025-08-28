@@ -12,48 +12,37 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, DollarSign } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { AIServiceFactory } from '@/services/ai/AIServiceFactory'
-
-interface APIKeyData {
-  key: string
-  isValid: boolean
-  isEnabled: boolean
-  lastValidated?: Date
-  usage?: {
-    tokensUsed: number
-    cost: number
-    requestCount: number
-  }
-}
+import { useAuth } from '@/components/auth/AuthProvider'
+import { UserApiKeyService, AIProvider, APIKeyInfo } from '@/services/settings/UserApiKeyService'
 
 export interface APIKeyManagerProps {
-  onKeysUpdate?: (keys: Record<string, APIKeyData>) => void
+  onKeysUpdate?: (keys: APIKeyInfo[]) => void
 }
 
 const AI_SERVICES = [
   {
-    id: 'openai',
+    id: 'openai' as AIProvider,
     name: 'OpenAI',
     description: 'GPT-4 and other OpenAI models',
     placeholder: 'sk-...',
     website: 'https://platform.openai.com/api-keys'
   },
   {
-    id: 'anthropic',
+    id: 'anthropic' as AIProvider,
     name: 'Anthropic',
     description: 'Claude models',
     placeholder: 'sk-ant-...',
     website: 'https://console.anthropic.com/'
   },
   {
-    id: 'xai',
+    id: 'xai' as AIProvider,
     name: 'xAI',
     description: 'Grok models',
     placeholder: 'xai-...',
     website: 'https://console.x.ai/'
   },
   {
-    id: 'gemini',
+    id: 'gemini' as AIProvider,
     name: 'Google Gemini',
     description: 'Gemini Pro models',
     placeholder: 'AI...',
@@ -62,85 +51,59 @@ const AI_SERVICES = [
 ]
 
 export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
-  const [apiKeys, setApiKeys] = useState<Record<string, APIKeyData>>({})
+  const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
   const [validatingKeys, setValidatingKeys] = useState<Record<string, boolean>>({})
   const [tempKeys, setTempKeys] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const { user } = useAuth()
+  const apiKeyService = new UserApiKeyService()
 
-  // Load API keys from localStorage on mount
+  // Load API keys from Supabase on mount
   useEffect(() => {
-    const loadedKeys: Record<string, APIKeyData> = {}
+    if (!user) return
     
-    AI_SERVICES.forEach(service => {
-      const storedKey = localStorage.getItem(`apiKey_${service.id}`)
-      const storedEnabled = localStorage.getItem(`apiEnabled_${service.id}`)
-      const storedUsage = localStorage.getItem(`apiUsage_${service.id}`)
-      
-      if (storedKey) {
-        loadedKeys[service.id] = {
-          key: storedKey,
-          isValid: false, // Will be validated
-          isEnabled: storedEnabled === 'true',
-          usage: storedUsage ? JSON.parse(storedUsage) : {
-            tokensUsed: 0,
-            cost: 0,
-            requestCount: 0
-          }
-        }
-        setTempKeys(prev => ({ ...prev, [service.id]: storedKey }))
-      } else {
-        loadedKeys[service.id] = {
-          key: '',
-          isValid: false,
-          isEnabled: false,
-          usage: {
-            tokensUsed: 0,
-            cost: 0,
-            requestCount: 0
-          }
-        }
+    const loadApiKeys = async () => {
+      try {
+        setLoading(true)
+        const keys = await apiKeyService.getUserApiKeys(user.id)
+        setApiKeys(keys)
+      } catch (error) {
+        console.error('Error loading API keys:', error)
+        toast({
+          title: 'Error Loading API Keys',
+          description: 'Failed to load your API keys from the database',
+          variant: 'destructive'
+        })
+      } finally {
+        setLoading(false)
       }
-    })
+    }
     
-    setApiKeys(loadedKeys)
-    
-    // Validate existing keys
-    Object.entries(loadedKeys).forEach(([serviceId, keyData]) => {
-      if (keyData.key) {
-        validateApiKey(serviceId, keyData.key, false)
-      }
-    })
-  }, [])
+    loadApiKeys()
+  }, [user])
 
   // Notify parent component when keys update
   useEffect(() => {
     onKeysUpdate?.(apiKeys)
   }, [apiKeys, onKeysUpdate])
 
-  const validateApiKey = async (serviceId: string, key: string, showToast = true) => {
-    if (!key.trim()) return
+  const validateApiKey = async (serviceId: AIProvider, key: string, showToast = true) => {
+    if (!key.trim() || !user) return
 
     setValidatingKeys(prev => ({ ...prev, [serviceId]: true }))
 
     try {
-      const service = AIServiceFactory.createService(serviceId as any, key)
-      const isValid = await service.validateApiKey(key)
+      // Save the API key first
+      await apiKeyService.saveApiKey(user.id, { provider: serviceId, apiKey: key })
       
-      const updatedKeyData = {
-        ...apiKeys[serviceId],
-        key,
-        isValid,
-        lastValidated: new Date()
-      }
-
-      setApiKeys(prev => ({
-        ...prev,
-        [serviceId]: updatedKeyData
-      }))
-
-      // Store in localStorage
-      localStorage.setItem(`apiKey_${serviceId}`, key)
+      // Then validate it
+      const isValid = await apiKeyService.validateApiKey(user.id, serviceId)
+      
+      // Reload the keys to get updated status
+      const updatedKeys = await apiKeyService.getUserApiKeys(user.id)
+      setApiKeys(updatedKeys)
 
       if (showToast) {
         toast({
@@ -154,16 +117,6 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
     } catch (error) {
       console.error(`Error validating ${serviceId} API key:`, error)
       
-      setApiKeys(prev => ({
-        ...prev,
-        [serviceId]: {
-          ...prev[serviceId],
-          key,
-          isValid: false,
-          lastValidated: new Date()
-        }
-      }))
-
       if (showToast) {
         toast({
           title: 'Validation Error',
@@ -176,37 +129,45 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
     }
   }
 
-  const handleKeyChange = (serviceId: string, value: string) => {
+  const handleKeyChange = (serviceId: AIProvider, value: string) => {
     setTempKeys(prev => ({ ...prev, [serviceId]: value }))
   }
 
-  const handleKeySave = (serviceId: string) => {
+  const handleKeySave = (serviceId: AIProvider) => {
     const key = tempKeys[serviceId]?.trim() || ''
     validateApiKey(serviceId, key)
   }
 
-  const handleKeyDelete = (serviceId: string) => {
-    setApiKeys(prev => ({
-      ...prev,
-      [serviceId]: {
-        ...prev[serviceId],
-        key: '',
-        isValid: false,
-        isEnabled: false
-      }
-    }))
-    setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
-    localStorage.removeItem(`apiKey_${serviceId}`)
-    localStorage.setItem(`apiEnabled_${serviceId}`, 'false')
+  const handleKeyDelete = async (serviceId: AIProvider) => {
+    if (!user) return
     
-    toast({
-      title: 'API Key Removed',
-      description: `${AI_SERVICES.find(s => s.id === serviceId)?.name} API key has been removed`
-    })
+    try {
+      await apiKeyService.deleteApiKey(user.id, serviceId)
+      
+      // Reload keys
+      const updatedKeys = await apiKeyService.getUserApiKeys(user.id)
+      setApiKeys(updatedKeys)
+      
+      setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
+      
+      toast({
+        title: 'API Key Removed',
+        description: `${AI_SERVICES.find(s => s.id === serviceId)?.name} API key has been removed`
+      })
+    } catch (error) {
+      console.error('Error deleting API key:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete API key',
+        variant: 'destructive'
+      })
+    }
   }
 
-  const handleServiceToggle = (serviceId: string, enabled: boolean) => {
-    if (enabled && !apiKeys[serviceId]?.isValid) {
+  const handleServiceToggle = async (serviceId: AIProvider, enabled: boolean) => {
+    const keyInfo = apiKeys.find(k => k.provider === serviceId)
+    
+    if (enabled && (!keyInfo || !keyInfo.isValid)) {
       toast({
         title: 'Invalid API Key',
         description: 'Please add a valid API key before enabling this service',
@@ -215,48 +176,59 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
       return
     }
 
-    setApiKeys(prev => ({
-      ...prev,
-      [serviceId]: {
-        ...prev[serviceId],
-        isEnabled: enabled
-      }
-    }))
-    
-    localStorage.setItem(`apiEnabled_${serviceId}`, enabled.toString())
-    
+    // For now, we don't have an enabled/disabled state in the database
+    // This could be added as a future enhancement
     toast({
       title: enabled ? 'Service Enabled' : 'Service Disabled',
       description: `${AI_SERVICES.find(s => s.id === serviceId)?.name} has been ${enabled ? 'enabled' : 'disabled'}`
     })
   }
 
-  const toggleKeyVisibility = (serviceId: string) => {
+  const toggleKeyVisibility = (serviceId: AIProvider) => {
     setShowKeys(prev => ({ ...prev, [serviceId]: !prev[serviceId] }))
   }
 
-  const getStatusIcon = (keyData?: APIKeyData) => {
-    if (!keyData || !keyData.key) return <AlertTriangle className="h-4 w-4 text-gray-400" />
-    if (keyData.isValid) return <CheckCircle className="h-4 w-4 text-green-500" />
+  const getStatusIcon = (keyInfo?: APIKeyInfo) => {
+    if (!keyInfo || !keyInfo.hasKey) return <AlertTriangle className="h-4 w-4 text-gray-400" />
+    if (keyInfo.isValid) return <CheckCircle className="h-4 w-4 text-green-500" />
     return <XCircle className="h-4 w-4 text-red-500" />
   }
 
-  const getStatusBadge = (keyData?: APIKeyData) => {
-    if (!keyData || !keyData.key) return <Badge variant="secondary">Not Set</Badge>
-    if (keyData.isValid && keyData.isEnabled) return <Badge variant="default">Active</Badge>
-    if (keyData.isValid && !keyData.isEnabled) return <Badge variant="outline">Valid</Badge>
+  const getStatusBadge = (keyInfo?: APIKeyInfo) => {
+    if (!keyInfo || !keyInfo.hasKey) return <Badge variant="secondary">Not Set</Badge>
+    if (keyInfo.isValid) return <Badge variant="default">Valid</Badge>
     return <Badge variant="destructive">Invalid</Badge>
   }
 
   const getTotalUsage = () => {
-    return Object.values(apiKeys).reduce((total, keyData) => ({
-      tokensUsed: total.tokensUsed + (keyData.usage?.tokensUsed || 0),
-      cost: total.cost + (keyData.usage?.cost || 0),
-      requestCount: total.requestCount + (keyData.usage?.requestCount || 0)
+    return apiKeys.reduce((total, keyInfo) => ({
+      tokensUsed: total.tokensUsed,
+      cost: total.cost,
+      requestCount: total.requestCount + keyInfo.usageCount
     }), { tokensUsed: 0, cost: 0, requestCount: 0 })
   }
 
   const totalUsage = getTotalUsage()
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-lg font-medium">Loading API keys...</div>
+          <div className="text-sm text-gray-600 mt-2">Please wait while we fetch your settings</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="text-center p-8">
+        <div className="text-lg font-medium">Please sign in</div>
+        <div className="text-sm text-gray-600 mt-2">You need to be signed in to manage API keys</div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -306,7 +278,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
 
         <TabsContent value="keys" className="space-y-4">
           {AI_SERVICES.map(service => {
-            const keyData = apiKeys[service.id] || { key: '', isValid: false, isEnabled: false }
+            const keyInfo = apiKeys.find(k => k.provider === service.id)
             const isValidating = validatingKeys[service.id]
             const tempKey = tempKeys[service.id] || ''
             const showKey = showKeys[service.id]
@@ -316,18 +288,18 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {getStatusIcon(keyData)}
+                      {getStatusIcon(keyInfo)}
                       <div>
                         <CardTitle className="text-lg">{service.name}</CardTitle>
                         <CardDescription>{service.description}</CardDescription>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {getStatusBadge(keyData)}
+                      {getStatusBadge(keyInfo)}
                       <Switch
-                        checked={keyData.isEnabled}
+                        checked={keyInfo?.isValid || false}
                         onCheckedChange={(enabled) => handleServiceToggle(service.id, enabled)}
-                        disabled={!keyData.isValid}
+                        disabled={!keyInfo?.isValid}
                       />
                     </div>
                   </div>
@@ -364,7 +336,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                       >
                         {isValidating ? 'Validating...' : 'Save & Validate'}
                       </Button>
-                      {keyData.key && (
+                      {keyInfo?.hasKey && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -376,9 +348,9 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                     </div>
                   </div>
 
-                  {keyData.lastValidated && (
+                  {keyInfo?.lastValidatedAt && (
                     <div className="text-sm text-gray-600">
-                      Last validated: {keyData.lastValidated.toLocaleString()}
+                      Last validated: {keyInfo.lastValidatedAt.toLocaleString()}
                     </div>
                   )}
 
@@ -400,29 +372,28 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
 
         <TabsContent value="usage" className="space-y-4">
           {AI_SERVICES.map(service => {
-            const keyData = apiKeys[service.id] || { key: '', isValid: false, isEnabled: false, usage: { tokensUsed: 0, cost: 0, requestCount: 0 } }
-            const usage = keyData.usage || { tokensUsed: 0, cost: 0, requestCount: 0 }
+            const keyInfo = apiKeys.find(k => k.provider === service.id)
 
             return (
               <Card key={service.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>{service.name}</span>
-                    {getStatusBadge(keyData)}
+                    {getStatusBadge(keyInfo)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <div className="text-lg font-semibold">{usage.tokensUsed.toLocaleString()}</div>
+                      <div className="text-lg font-semibold">0</div>
                       <div className="text-sm text-gray-600">Tokens Used</div>
                     </div>
                     <div>
-                      <div className="text-lg font-semibold">${usage.cost.toFixed(4)}</div>
+                      <div className="text-lg font-semibold">$0.0000</div>
                       <div className="text-sm text-gray-600">Estimated Cost</div>
                     </div>
                     <div>
-                      <div className="text-lg font-semibold">{usage.requestCount}</div>
+                      <div className="text-lg font-semibold">{keyInfo?.usageCount || 0}</div>
                       <div className="text-sm text-gray-600">API Requests</div>
                     </div>
                   </div>
@@ -436,7 +407,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          API keys are stored locally in your browser. They are not sent to our servers.
+          API keys are securely encrypted and stored in your database. They are never logged or exposed.
           Make sure to keep your API keys secure and never share them publicly.
         </AlertDescription>
       </Alert>

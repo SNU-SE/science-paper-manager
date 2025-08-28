@@ -239,6 +239,126 @@ export interface Database {
           created_at: string
           updated_at: string
         }
+      }
+      user_api_keys: {
+        Row: {
+          id: string
+          user_id: string
+          provider: string
+          api_key_encrypted: string
+          api_key_hash: string
+          is_valid: boolean
+          last_validated_at: string | null
+          usage_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: string
+          api_key_encrypted: string
+          api_key_hash: string
+          is_valid?: boolean
+          last_validated_at?: string | null
+          usage_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: string
+          api_key_encrypted?: string
+          api_key_hash?: string
+          is_valid?: boolean
+          last_validated_at?: string | null
+          usage_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_ai_model_preferences: {
+        Row: {
+          id: string
+          user_id: string
+          provider: string
+          model_name: string
+          is_default: boolean
+          parameters: any
+          is_enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: string
+          model_name: string
+          is_default?: boolean
+          parameters?: any
+          is_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: string
+          model_name?: string
+          is_default?: boolean
+          parameters?: any
+          is_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_zotero_settings: {
+        Row: {
+          id: string
+          user_id: string
+          api_key_encrypted: string
+          user_id_zotero: string
+          library_type: string
+          library_id: string | null
+          auto_sync: boolean
+          sync_interval: number
+          last_sync_at: string | null
+          sync_status: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          api_key_encrypted: string
+          user_id_zotero: string
+          library_type?: string
+          library_id?: string | null
+          auto_sync?: boolean
+          sync_interval?: number
+          last_sync_at?: string | null
+          sync_status?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          api_key_encrypted?: string
+          user_id_zotero?: string
+          library_type?: string
+          library_id?: string | null
+          auto_sync?: boolean
+          sync_interval?: number
+          last_sync_at?: string | null
+          sync_status?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
         Insert: {
           id?: string
           user_id: string
@@ -307,5 +427,17 @@ export type DocumentUpdate = Database['public']['Tables']['documents']['Update']
 export type UserGoogleDriveSettings = Database['public']['Tables']['user_google_drive_settings']['Row']
 export type UserGoogleDriveSettingsInsert = Database['public']['Tables']['user_google_drive_settings']['Insert']
 export type UserGoogleDriveSettingsUpdate = Database['public']['Tables']['user_google_drive_settings']['Update']
+
+export type UserApiKey = Database['public']['Tables']['user_api_keys']['Row']
+export type UserApiKeyInsert = Database['public']['Tables']['user_api_keys']['Insert']
+export type UserApiKeyUpdate = Database['public']['Tables']['user_api_keys']['Update']
+
+export type UserAiModelPreference = Database['public']['Tables']['user_ai_model_preferences']['Row']
+export type UserAiModelPreferenceInsert = Database['public']['Tables']['user_ai_model_preferences']['Insert']
+export type UserAiModelPreferenceUpdate = Database['public']['Tables']['user_ai_model_preferences']['Update']
+
+export type UserZoteroSettings = Database['public']['Tables']['user_zotero_settings']['Row']
+export type UserZoteroSettingsInsert = Database['public']['Tables']['user_zotero_settings']['Insert']
+export type UserZoteroSettingsUpdate = Database['public']['Tables']['user_zotero_settings']['Update']
 
 export type MatchDocumentsResult = Database['public']['Functions']['match_documents']['Returns'][0]

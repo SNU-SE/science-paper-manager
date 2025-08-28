@@ -7,88 +7,98 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, CheckCircle, XCircle, ExternalLink } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, CheckCircle, XCircle, ExternalLink, RefreshCw, Activity } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-
-interface ZoteroConfigData {
-  userId: string
-  apiKey: string
-  libraryType: 'user' | 'group'
-  libraryId?: string
-}
+import { useAuth } from '@/components/auth/AuthProvider'
+import { UserZoteroService, ZoteroConfig as ZoteroConfigType, ZoteroSettingsInfo } from '@/services/settings/UserZoteroService'
 
 interface ZoteroConfigProps {
-  onConfigured?: () => void
+  onConfigured?: (settings: ZoteroSettingsInfo) => void
 }
 
 export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
-  const [config, setConfig] = useState<ZoteroConfigData>({
-    userId: '',
+  const [config, setConfig] = useState<ZoteroConfigType>({
     apiKey: '',
+    userIdZotero: '',
     libraryType: 'user',
-    libraryId: ''
+    libraryId: '',
+    autoSync: false,
+    syncInterval: 3600
   })
-  const [isLoading, setIsLoading] = useState(false)
-  const [isConfigured, setIsConfigured] = useState(false)
+  const [settings, setSettings] = useState<ZoteroSettingsInfo | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [libraryInfo, setLibraryInfo] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
+  const { user } = useAuth()
+  const zoteroService = new UserZoteroService()
 
   useEffect(() => {
-    checkConfiguration()
-  }, [])
+    if (user) {
+      loadZoteroSettings()
+    }
+  }, [user])
 
-  const checkConfiguration = async () => {
+  const loadZoteroSettings = async () => {
+    if (!user) return
+    
     try {
-      const response = await fetch('/api/zotero/config')
-      const result = await response.json()
+      setIsLoading(true)
+      const userSettings = await zoteroService.getUserZoteroSettings(user.id)
       
-      if (result.success && result.data.isConfigured) {
-        setIsConfigured(true)
-        if (result.data.config) {
-          setConfig(prev => ({
-            ...prev,
-            userId: result.data.config.userId || '',
-            libraryType: result.data.config.libraryType || 'user',
-            libraryId: result.data.config.libraryId || ''
-          }))
-        }
+      if (userSettings) {
+        setSettings(userSettings)
+        setConfig({
+          apiKey: '', // Don't show the actual API key
+          userIdZotero: userSettings.userIdZotero,
+          libraryType: userSettings.libraryType,
+          libraryId: userSettings.libraryId || '',
+          autoSync: userSettings.autoSync,
+          syncInterval: userSettings.syncInterval
+        })
+        
+        // Load library info if configured
+        const info = await zoteroService.getZoteroLibraryInfo(user.id)
+        setLibraryInfo(info)
+        
+        onConfigured?.(userSettings)
       }
     } catch (error) {
-      console.error('Error checking Zotero configuration:', error)
+      console.error('Error loading Zotero settings:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load Zotero settings',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    if (!user || !config.apiKey.trim()) return
+    
+    setIsSaving(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/zotero/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(config)
+      const savedSettings = await zoteroService.saveZoteroSettings(user.id, config)
+      setSettings(savedSettings)
+      
+      // Load library info
+      const info = await zoteroService.getZoteroLibraryInfo(user.id)
+      setLibraryInfo(info)
+      
+      toast({
+        title: 'Success',
+        description: 'Zotero configured successfully'
       })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setIsConfigured(true)
-        toast({
-          title: 'Success',
-          description: 'Zotero configured successfully'
-        })
-        onConfigured?.()
-      } else {
-        setError(result.error)
-        toast({
-          title: 'Error',
-          description: result.error,
-          variant: 'destructive'
-        })
-      }
+      onConfigured?.(savedSettings)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to configure Zotero'
       setError(errorMessage)
@@ -98,33 +108,32 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
         variant: 'destructive'
       })
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
   }
 
   const handleDisconnect = async () => {
-    setIsLoading(true)
+    if (!user) return
+    
+    setIsSaving(true)
     
     try {
-      const response = await fetch('/api/zotero/config', {
-        method: 'DELETE'
+      await zoteroService.deleteZoteroSettings(user.id)
+      setSettings(null)
+      setLibraryInfo(null)
+      setConfig({
+        apiKey: '',
+        userIdZotero: '',
+        libraryType: 'user',
+        libraryId: '',
+        autoSync: false,
+        syncInterval: 3600
       })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setIsConfigured(false)
-        setConfig({
-          userId: '',
-          apiKey: '',
-          libraryType: 'user',
-          libraryId: ''
-        })
-        toast({
-          title: 'Success',
-          description: 'Zotero disconnected successfully'
-        })
-      }
+      
+      toast({
+        title: 'Success',
+        description: 'Zotero disconnected successfully'
+      })
     } catch (error) {
       toast({
         title: 'Error',
@@ -132,8 +141,101 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
         variant: 'destructive'
       })
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
+  }
+  
+  const handleTestConnection = async () => {
+    if (!user) return
+    
+    setIsTestingConnection(true)
+    
+    try {
+      const isConnected = await zoteroService.testZoteroConnection(user.id)
+      
+      toast({
+        title: isConnected ? 'Connection Successful' : 'Connection Failed',
+        description: isConnected 
+          ? 'Your Zotero API connection is working correctly' 
+          : 'Unable to connect to your Zotero library. Please check your settings.',
+        variant: isConnected ? 'default' : 'destructive'
+      })
+    } catch (error) {
+      toast({
+        title: 'Connection Test Failed',
+        description: 'Failed to test Zotero connection',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsTestingConnection(false)
+    }
+  }
+  
+  const handleSyncSettingsUpdate = async (autoSync: boolean, syncInterval?: number) => {
+    if (!user) return
+    
+    try {
+      await zoteroService.updateSyncSettings(user.id, {
+        autoSync,
+        ...(syncInterval !== undefined && { syncInterval })
+      })
+      
+      // Reload settings
+      await loadZoteroSettings()
+      
+      toast({
+        title: 'Settings Updated',
+        description: 'Sync settings have been updated'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update sync settings',
+        variant: 'destructive'
+      })
+    }
+  }
+  
+  const handleTriggerSync = async () => {
+    if (!user) return
+    
+    try {
+      await zoteroService.triggerSync(user.id)
+      
+      toast({
+        title: 'Sync Started',
+        description: 'Manual sync has been triggered'
+      })
+      
+      // Reload settings to show updated status
+      setTimeout(() => loadZoteroSettings(), 1000)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to trigger sync',
+        variant: 'destructive'
+      })
+    }
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+          <div className="text-lg font-medium">Loading Zotero Settings...</div>
+        </div>
+      </div>
+    )
+  }
+  
+  if (!user) {
+    return (
+      <div className="text-center p-8">
+        <div className="text-lg font-medium">Please sign in</div>
+        <div className="text-sm text-gray-600 mt-2">You need to be signed in to configure Zotero</div>
+      </div>
+    )
   }
 
   return (
@@ -141,7 +243,7 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Zotero Integration
-          {isConfigured ? (
+          {settings ? (
             <CheckCircle className="h-5 w-5 text-green-500" />
           ) : (
             <XCircle className="h-5 w-5 text-red-500" />
@@ -166,33 +268,127 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
           </Alert>
         )}
 
-        {isConfigured ? (
-          <div className="space-y-4">
+        {settings ? (
+          <div className="space-y-6">
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-800 font-medium">✓ Zotero is connected</p>
-              <p className="text-green-600 text-sm mt-1">
-                User ID: {config.userId} | Library: {config.libraryType}
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-800 font-medium flex items-center gap-2">
+                    ✓ Zotero is connected
+                    <Badge variant={settings.syncStatus === 'completed' ? 'default' : settings.syncStatus === 'syncing' ? 'secondary' : 'destructive'}>
+                      {settings.syncStatus}
+                    </Badge>
+                  </p>
+                  <p className="text-green-600 text-sm mt-1">
+                    User ID: {settings.userIdZotero} | Library: {settings.libraryType}
+                    {settings.lastSyncAt && (
+                      <span className="ml-2">| Last sync: {settings.lastSyncAt.toLocaleString()}</span>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleTestConnection}
+                  variant="outline"
+                  size="sm"
+                  disabled={isTestingConnection}
+                >
+                  {isTestingConnection ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>Test Connection</>
+                  )}
+                </Button>
+              </div>
             </div>
-            <Button 
-              onClick={handleDisconnect} 
-              variant="outline"
-              disabled={isLoading}
-            >
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Disconnect Zotero
-            </Button>
+            
+            {libraryInfo && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold">{libraryInfo.totalItems}</div>
+                  <div className="text-sm text-gray-600">Total Items</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold">{libraryInfo.collections}</div>
+                  <div className="text-sm text-gray-600">Collections</div>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <div className="text-2xl font-bold">
+                    {libraryInfo.lastModified ? '✓' : '—'}
+                  </div>
+                  <div className="text-sm text-gray-600">Last Modified</div>
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Auto Sync</Label>
+                  <p className="text-sm text-gray-600">Automatically sync your Zotero library</p>
+                </div>
+                <Switch
+                  checked={settings.autoSync}
+                  onCheckedChange={(checked) => handleSyncSettingsUpdate(checked)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Sync Interval (seconds)</Label>
+                <Input
+                  type="number"
+                  value={settings.syncInterval}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value)
+                    if (value >= 60) {
+                      handleSyncSettingsUpdate(settings.autoSync, value)
+                    }
+                  }}
+                  min="60"
+                  step="60"
+                />
+                <p className="text-sm text-gray-500">Minimum 60 seconds</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleTriggerSync}
+                variant="default"
+                disabled={settings.syncStatus === 'syncing'}
+              >
+                {settings.syncStatus === 'syncing' ? (
+                  <>
+                    <Activity className="mr-2 h-4 w-4 animate-pulse" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Sync Now
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                onClick={handleDisconnect} 
+                variant="outline"
+                disabled={isSaving}
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Disconnect
+              </Button>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="userId">User ID</Label>
+              <Label htmlFor="userIdZotero">User ID</Label>
               <Input
-                id="userId"
+                id="userIdZotero"
                 type="text"
                 placeholder="Your Zotero User ID"
-                value={config.userId}
-                onChange={(e) => setConfig(prev => ({ ...prev, userId: e.target.value }))}
+                value={config.userIdZotero}
+                onChange={(e) => setConfig(prev => ({ ...prev, userIdZotero: e.target.value }))}
                 required
               />
               <p className="text-sm text-gray-500">
@@ -246,8 +442,36 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
               </div>
             )}
 
-            <Button type="submit" disabled={isLoading} className="w-full">
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Auto Sync</Label>
+                  <p className="text-sm text-gray-600">Enable automatic syncing</p>
+                </div>
+                <Switch
+                  checked={config.autoSync}
+                  onCheckedChange={(checked) => setConfig(prev => ({ ...prev, autoSync: checked }))}
+                />
+              </div>
+              
+              {config.autoSync && (
+                <div className="space-y-2">
+                  <Label htmlFor="syncInterval">Sync Interval (seconds)</Label>
+                  <Input
+                    id="syncInterval"
+                    type="number"
+                    value={config.syncInterval}
+                    onChange={(e) => setConfig(prev => ({ ...prev, syncInterval: parseInt(e.target.value) || 3600 }))}
+                    min="60"
+                    step="60"
+                  />
+                  <p className="text-sm text-gray-500">Minimum 60 seconds</p>
+                </div>
+              )}
+            </div>
+            
+            <Button type="submit" disabled={isSaving || !config.apiKey.trim()} className="w-full">
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Connect Zotero
             </Button>
           </form>
