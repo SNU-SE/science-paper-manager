@@ -1,7 +1,7 @@
 import { OpenAIEmbeddings } from '@langchain/openai'
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase'
 import { Document } from '@langchain/core/documents'
-import { supabaseAdmin, TABLES, type MatchDocumentsResult } from '@/lib/database'
+import { getSupabaseAdminClient, TABLES, type MatchDocumentsResult } from '@/lib/database'
 import type { Paper, UserEvaluation, AIAnalysisResult, MultiModelAnalysis, SearchResult, RAGResponse } from '@/types'
 
 export interface VectorSearchOptions {
@@ -34,7 +34,7 @@ export class SupabaseVectorService {
 
     // Initialize Supabase vector store with LangChain integration
     this.vectorStore = new SupabaseVectorStore(this.embeddings, {
-      client: supabaseAdmin,
+      client: getSupabaseAdminClient(),
       tableName: TABLES.DOCUMENTS,
       queryName: 'match_documents',
     })

@@ -2,22 +2,43 @@ import { createClient } from '@supabase/supabase-js'
 
 // Database configuration
 export const supabaseConfig = {
-  url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 }
 
 // Create Supabase client for client-side operations
-export const supabase = createClient(
-  supabaseConfig.url,
-  supabaseConfig.anonKey
-)
+export function getSupabaseClient() {
+  if (!supabaseConfig.url || !supabaseConfig.anonKey) {
+    throw new Error('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.')
+  }
+  return createClient(supabaseConfig.url, supabaseConfig.anonKey)
+}
 
 // Create Supabase client with service role for admin operations
-export const supabaseAdmin = createClient(
-  supabaseConfig.url,
-  supabaseConfig.serviceRoleKey || supabaseConfig.anonKey
-)
+export function getSupabaseAdminClient() {
+  if (!supabaseConfig.url || !supabaseConfig.serviceRoleKey) {
+    throw new Error('Supabase admin configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.')
+  }
+  return createClient(supabaseConfig.url, supabaseConfig.serviceRoleKey)
+}
+
+// Legacy exports for backward compatibility - these will throw errors during build if env vars are missing
+export const supabase = (() => {
+  if (!supabaseConfig.url || !supabaseConfig.anonKey) {
+    // Return a mock client during build time
+    return null as any
+  }
+  return createClient(supabaseConfig.url, supabaseConfig.anonKey)
+})()
+
+export const supabaseAdmin = (() => {
+  if (!supabaseConfig.url || !supabaseConfig.serviceRoleKey) {
+    // Return a mock client during build time
+    return null as any
+  }
+  return createClient(supabaseConfig.url, supabaseConfig.serviceRoleKey)
+})()
 
 // Database table names
 export const TABLES = {
