@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 // Database configuration
 export const supabaseConfig = {
@@ -7,43 +7,63 @@ export const supabaseConfig = {
   serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 }
 
-// Create Supabase client for client-side operations with auth
+// Singleton instances to prevent multiple client creation
+let supabaseInstance: SupabaseClient | null = null
+let supabaseAdminInstance: SupabaseClient | null = null
+
+// Create Supabase client for client-side operations with auth (Singleton)
 export function getSupabaseClient() {
   if (!supabaseConfig.url || !supabaseConfig.anonKey) {
     throw new Error('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.')
   }
-  return createClient(supabaseConfig.url, supabaseConfig.anonKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    }
-  })
+  
+  if (!supabaseInstance) {
+    supabaseInstance = createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined
+      }
+    })
+  }
+  
+  return supabaseInstance
 }
 
-// Create Supabase client with service role for admin operations
+// Create Supabase client with service role for admin operations (Singleton)
 export function getSupabaseAdminClient() {
   if (!supabaseConfig.url || !supabaseConfig.serviceRoleKey) {
     throw new Error('Supabase admin configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.')
   }
-  return createClient(supabaseConfig.url, supabaseConfig.serviceRoleKey)
+  
+  if (!supabaseAdminInstance) {
+    supabaseAdminInstance = createClient(supabaseConfig.url, supabaseConfig.serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  }
+  
+  return supabaseAdminInstance
 }
 
-// Legacy exports for backward compatibility - these will throw errors during build if env vars are missing
+// Legacy exports using singleton instances
 export const supabase = (() => {
-  if (!supabaseConfig.url || !supabaseConfig.anonKey) {
-    // Return a mock client during build time
+  try {
+    return getSupabaseClient()
+  } catch {
     return null as any
   }
-  return createClient(supabaseConfig.url, supabaseConfig.anonKey)
 })()
 
 export const supabaseAdmin = (() => {
-  if (!supabaseConfig.url || !supabaseConfig.serviceRoleKey) {
-    // Return a mock client during build time
+  try {
+    return getSupabaseAdminClient()
+  } catch {
     return null as any
   }
-  return createClient(supabaseConfig.url, supabaseConfig.serviceRoleKey)
 })()
 
 // Database table names
