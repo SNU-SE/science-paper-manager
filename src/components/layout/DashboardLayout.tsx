@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuth } from '@/components/auth/AuthProvider'
 import { toast } from 'sonner'
 import { Search, FileText, BarChart3, Upload, MessageCircle } from 'lucide-react'
 
@@ -11,12 +11,12 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const logout = useAuthStore(state => state.logout)
+  const { signOut, user } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await signOut()
     toast.success('Logged out successfully')
     router.push('/login')
   }
@@ -45,7 +45,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           
           <div className="flex items-center gap-4">
             <span className="text-sm text-slate-600 dark:text-slate-400">
-              Welcome, Admin
+              Welcome, {user?.email || 'User'}
             </span>
             <Button 
               variant="outline" 

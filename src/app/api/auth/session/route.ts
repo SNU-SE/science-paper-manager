@@ -1,45 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
 
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get('session')
+    const user = await getAuthenticatedUser(request)
     
-    if (!sessionCookie?.value) {
+    if (!user) {
       return NextResponse.json(
         { authenticated: false },
         { status: 401 }
       )
     }
 
-    // Decode session token (in production, verify JWT properly)
-    try {
-      const decoded = Buffer.from(sessionCookie.value, 'base64').toString()
-      const [email, timestamp] = decoded.split(':')
-      
-      // Check if session is still valid (7 days)
-      const sessionAge = Date.now() - parseInt(timestamp)
-      const maxAge = 60 * 60 * 24 * 7 * 1000 // 7 days in milliseconds
-      
-      if (sessionAge > maxAge) {
-        return NextResponse.json(
-          { authenticated: false, error: 'Session expired' },
-          { status: 401 }
-        )
+    return NextResponse.json({
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        emailConfirmed: user.email_confirmed_at !== null
       }
-
-      return NextResponse.json({
-        authenticated: true,
-        user: {
-          email: email,
-          role: 'admin'
-        }
-      })
-    } catch (decodeError) {
-      return NextResponse.json(
-        { authenticated: false, error: 'Invalid session' },
-        { status: 401 }
-      )
-    }
+    })
   } catch (error) {
     console.error('Session check API error:', error)
     return NextResponse.json(

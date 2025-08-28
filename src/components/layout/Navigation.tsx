@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuth } from '@/components/auth/AuthProvider'
 import { 
   LayoutDashboard, 
   FileText, 
@@ -24,10 +24,10 @@ const navigationItems = [
 export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
-  const { logout } = useAuthStore()
+  const { signOut, user } = useAuth()
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await signOut()
     router.push('/login')
   }
 

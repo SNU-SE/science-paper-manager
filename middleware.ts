@@ -1,45 +1,53 @@
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  // Get the pathname of the request
+export async function middleware(request: NextRequest) {
+  const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req: request, res })
+  
+  // Refresh session if expired - required for Server Components
+  const { data: { session } } = await supabase.auth.getSession()
+  
   const { pathname } = request.nextUrl
-
+  
   // Define protected routes
-  const protectedRoutes = ['/dashboard']
+  const protectedRoutes = ['/dashboard', '/papers', '/search', '/chat', '/settings']
   const authRoutes = ['/login']
-  const publicRoutes = ['/']
-
-  // Check if the current route is protected
+  const publicRoutes = ['/', '/demo']
+  
   const isProtectedRoute = protectedRoutes.some(route => 
     pathname.startsWith(route)
   )
-
-  // Check if the current route is an auth route
+  
   const isAuthRoute = authRoutes.some(route => 
     pathname.startsWith(route)
   )
-
-  // Check if the current route is public
-  const isPublicRoute = publicRoutes.includes(pathname)
-
-  // For now, we rely on client-side authentication handling
-  // This middleware provides the foundation for future server-side session management
-  // All authentication logic is currently handled by the AuthProvider and ProtectedRoute components
-
-  // Allow all requests to pass through - authentication is handled client-side
-  return NextResponse.next()
+  
+  const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/api/')
+  
+  // Redirect to login if accessing protected route without session
+  if (isProtectedRoute && !session) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  
+  // Redirect to dashboard if accessing auth route with valid session
+  if (isAuthRoute && session) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+  
+  return res
 }
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public folder
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

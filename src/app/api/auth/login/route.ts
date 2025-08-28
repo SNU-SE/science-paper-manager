@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseClient } from '@/lib/database'
 
 interface LoginCredentials {
   email: string
   password: string
-}
-
-// Simple hardcoded authentication as per requirements
-const ADMIN_CREDENTIALS = {
-  email: 'admin@email.com',
-  password: '1234567890'
 }
 
 export async function POST(request: NextRequest) {
@@ -24,35 +19,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check credentials
-    if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
-      // Create a simple session token (in production, use proper JWT)
-      const sessionToken = Buffer.from(`${email}:${Date.now()}`).toString('base64')
-      
-      const response = NextResponse.json({
-        success: true,
-        user: {
-          email: email,
-          role: 'admin'
-        },
-        token: sessionToken
-      })
+    const supabase = getSupabaseClient()
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-      // Set session cookie
-      response.cookies.set('session', sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7 // 7 days
-      })
-
-      return response
-    } else {
+    if (error) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: error.message },
         { status: 401 }
       )
     }
+
+    return NextResponse.json({
+      success: true,
+      user: data.user,
+      session: data.session
+    })
   } catch (error) {
     console.error('Login API error:', error)
     return NextResponse.json(

@@ -7,12 +7,18 @@ export const supabaseConfig = {
   serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 }
 
-// Create Supabase client for client-side operations
+// Create Supabase client for client-side operations with auth
 export function getSupabaseClient() {
   if (!supabaseConfig.url || !supabaseConfig.anonKey) {
     throw new Error('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.')
   }
-  return createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  return createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  })
 }
 
 // Create Supabase client with service role for admin operations

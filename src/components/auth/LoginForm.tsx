@@ -6,14 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuth } from '@/components/auth/AuthProvider'
 import { toast } from 'sonner'
 
 export function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const login = useAuthStore(state => state.login)
+  const [isSignUp, setIsSignUp] = useState(false)
+  const { signIn, signUp } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,16 +28,22 @@ export function LoginForm() {
     setIsLoading(true)
     
     try {
-      const success = await login(email, password)
+      const { error } = isSignUp 
+        ? await signUp(email, password)
+        : await signIn(email, password)
       
-      if (success) {
-        toast.success('Login successful!')
-        router.push('/dashboard')
+      if (error) {
+        toast.error(error.message)
       } else {
-        toast.error('Invalid credentials. Please check your email and password.')
+        if (isSignUp) {
+          toast.success('Account created! Please check your email to verify your account.')
+        } else {
+          toast.success('Login successful!')
+          router.push('/dashboard')
+        }
       }
-    } catch {
-      toast.error('An error occurred during login. Please try again.')
+    } catch (error) {
+      toast.error('An error occurred. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -84,18 +91,31 @@ export function LoginForm() {
               className="w-full" 
               disabled={isLoading}
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading 
+                ? (isSignUp ? 'Creating account...' : 'Signing in...') 
+                : (isSignUp ? 'Sign Up' : 'Sign In')
+              }
             </Button>
+            
+            <div className="text-center">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsSignUp(!isSignUp)}
+                disabled={isLoading}
+              >
+                {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+              </Button>
+            </div>
           </form>
           
-          <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-            <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
-              Demo Credentials:
-            </p>
-            <p className="text-sm font-mono text-center mt-1">
-              admin@email.com / 1234567890
-            </p>
-          </div>
+          {!isSignUp && (
+            <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
+                Create a new account or sign in with your existing Supabase credentials
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

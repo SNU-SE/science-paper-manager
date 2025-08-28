@@ -5,17 +5,17 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from '@/stores/authStore'
+import { useAuth } from '@/components/auth/AuthProvider'
 
 export default function Home() {
-  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
+  const { user } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (user) {
       router.push('/dashboard')
     }
-  }, [isAuthenticated, router])
+  }, [user, router])
 
   const handleGetStarted = () => {
     router.push('/login')
