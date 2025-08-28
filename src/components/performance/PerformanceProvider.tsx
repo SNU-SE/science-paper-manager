@@ -145,7 +145,7 @@ export function useComponentPerformance(componentName: string) {
     recordMetric(`${componentName}_render`, end - start)
   }, [componentName, recordMetric])
 
-  const measureAsyncOperation = React.useCallback(async <T>(
+  const measureAsyncOperation = React.useCallback(async <T,>(
     operationName: string,
     operation: () => Promise<T>
   ): Promise<T> => {

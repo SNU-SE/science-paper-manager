@@ -157,8 +157,8 @@ export function estimateReadingTime(wordCount: number): string {
     return `${hours}h ${remainingMinutes}m read`
   }
 }
-// Perfo
-rmance utilities
+
+// Performance utilities
 export * from './performance'
 export * from './analytics'
 export * from './monitoring'

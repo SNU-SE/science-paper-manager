@@ -268,9 +268,9 @@ export function PerformanceDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm">
-                <div><strong>LCP (Largest Contentful Paint):</strong> Good ≤ 2.5s, Needs Improvement ≤ 4s, Poor > 4s</div>
-                <div><strong>FID (First Input Delay):</strong> Good ≤ 100ms, Needs Improvement ≤ 300ms, Poor > 300ms</div>
-                <div><strong>CLS (Cumulative Layout Shift):</strong> Good ≤ 0.1, Needs Improvement ≤ 0.25, Poor > 0.25</div>
+                <div><strong>LCP (Largest Contentful Paint):</strong> Good ≤ 2.5s, Needs Improvement ≤ 4s, Poor &gt; 4s</div>
+                <div><strong>FID (First Input Delay):</strong> Good ≤ 100ms, Needs Improvement ≤ 300ms, Poor &gt; 300ms</div>
+                <div><strong>CLS (Cumulative Layout Shift):</strong> Good ≤ 0.1, Needs Improvement ≤ 0.25, Poor &gt; 0.25</div>
               </div>
             </CardContent>
           </Card>
