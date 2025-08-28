@@ -1,5 +1,13 @@
-import { GoogleDriveService, UploadResult } from '@/lib/google-drive';
 import { Paper } from '@/types';
+
+// Re-export types for client use
+export interface UploadResult {
+  fileId: string;
+  fileName: string;
+  webViewLink: string;
+  webContentLink: string;
+  folderPath: string;
+}
 
 export interface UploadConfig {
   googleDrive: {
@@ -29,17 +37,10 @@ export interface UploadProgress {
 }
 
 export class PaperUploadService {
-  private driveService: GoogleDriveService;
   private config: UploadConfig;
 
   constructor(config: UploadConfig) {
     this.config = config;
-    this.driveService = new GoogleDriveService({
-      clientId: config.googleDrive.clientId,
-      clientSecret: config.googleDrive.clientSecret,
-      redirectUri: config.googleDrive.redirectUri,
-      refreshToken: config.googleDrive.refreshToken
-    });
   }
 
   /**
@@ -118,14 +119,23 @@ export class PaperUploadService {
         message: 'Uploading to Google Drive...'
       });
 
-      const uploadResult = await this.driveService.uploadPDF(
-        fileBuffer,
-        paperData.file.name,
-        year,
-        journal,
-        paperTitle,
-        this.config.googleDrive.rootFolderId
-      );
+      // Upload via API route instead of direct service call
+      const formData = new FormData();
+      formData.append('file', paperData.file);
+      formData.append('year', year);
+      formData.append('journal', journal);
+      formData.append('paperTitle', paperTitle);
+
+      const response = await fetch('/api/google-drive/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      const uploadResult: UploadResult = await response.json();
 
       // Stage 4: Create paper object
       onProgress?.({
@@ -210,26 +220,20 @@ export class PaperUploadService {
     journal?: string
   ): Promise<boolean> {
     try {
-      const { year: folderYear, journal: folderJournal, paperTitle } = this.generateFolderPath({
-        file: {} as File,
+      const params = new URLSearchParams({
         title,
-        authors: [],
-        journal,
-        publicationYear: year
+        ...(year && { year: year.toString() }),
+        ...(journal && { journal })
       });
 
-      // Try to find the folder structure
-      const folderId = await this.driveService.createFolderStructure(
-        folderYear,
-        folderJournal,
-        paperTitle,
-        this.config.googleDrive.rootFolderId
-      );
-
-      // List PDF files in the folder
-      const files = await this.driveService.listFiles(folderId, 'application/pdf');
+      const response = await fetch(`/api/google-drive/check-duplicate?${params}`);
       
-      return files.length > 0;
+      if (!response.ok) {
+        throw new Error(`Check failed: ${response.statusText}`);
+      }
+
+      const { exists } = await response.json();
+      return exists;
     } catch (error) {
       console.error('Error checking duplicate paper:', error);
       return false;
@@ -245,28 +249,13 @@ export class PaperUploadService {
     recentUploads: number;
   }> {
     try {
-      const files = await this.driveService.listFiles(
-        this.config.googleDrive.rootFolderId,
-        'application/pdf'
-      );
-
-      const totalSize = files.reduce((sum, file) => {
-        return sum + (parseInt(file.size || '0'));
-      }, 0);
-
-      // Count recent uploads (last 7 days)
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
+      const response = await fetch('/api/google-drive/stats');
       
-      const recentUploads = files.filter(file => 
-        new Date(file.createdTime) > weekAgo
-      ).length;
+      if (!response.ok) {
+        throw new Error(`Stats failed: ${response.statusText}`);
+      }
 
-      return {
-        totalFiles: files.length,
-        totalSize: this.formatFileSize(totalSize),
-        recentUploads
-      };
+      return await response.json();
     } catch (error) {
       console.error('Error getting upload stats:', error);
       return {

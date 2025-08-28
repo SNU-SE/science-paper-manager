@@ -123,7 +123,18 @@ const nextConfig: NextConfig = {
         path: false,
         child_process: false,
         http2: false,
+        buffer: false,
+        util: false,
+        querystring: false,
+        events: false,
       };
+
+      // Exclude googleapis from client bundle
+      config.externals = config.externals || [];
+      config.externals.push({
+        googleapis: 'googleapis',
+        'google-auth-library': 'google-auth-library',
+      });
     }
 
     // Optimize bundle size
