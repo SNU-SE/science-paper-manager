@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin, TABLES } from './database'
+import { getSupabaseClient, getSupabaseAdminClient, TABLES } from './database'
 
 /**
  * Database validation utilities for Science Paper Manager
@@ -27,6 +27,9 @@ export async function validateDatabaseSetup(): Promise<DatabaseHealth> {
   }
 
   try {
+    const supabase = getSupabaseClient()
+    const supabaseAdmin = getSupabaseAdminClient()
+    
     // Test basic connection
     const { error: connectionError } = await supabase
       .from('information_schema.tables')
@@ -128,6 +131,8 @@ export async function validateDatabaseSetup(): Promise<DatabaseHealth> {
  */
 export async function testDatabaseOperations(): Promise<boolean> {
   try {
+    const supabase = getSupabaseClient()
+    
     // Test paper insertion
     const testPaper = {
       title: 'Test Paper for Database Validation',
@@ -212,6 +217,8 @@ export async function testDatabaseOperations(): Promise<boolean> {
  */
 export async function getDatabaseStats() {
   try {
+    const supabase = getSupabaseClient()
+    
     const [papersCount, evaluationsCount, analysesCount, documentsCount] = await Promise.all([
       supabase.from(TABLES.PAPERS).select('id', { count: 'exact', head: true }),
       supabase.from(TABLES.USER_EVALUATIONS).select('id', { count: 'exact', head: true }),

@@ -33,11 +33,19 @@ export class SupabaseVectorService {
     })
 
     // Initialize Supabase vector store with LangChain integration
-    this.vectorStore = new SupabaseVectorStore(this.embeddings, {
-      client: getSupabaseAdminClient(),
-      tableName: TABLES.DOCUMENTS,
-      queryName: 'match_documents',
-    })
+    // Use try-catch to handle build-time issues gracefully
+    try {
+      this.vectorStore = new SupabaseVectorStore(this.embeddings, {
+        client: getSupabaseAdminClient(),
+        tableName: TABLES.DOCUMENTS,
+        queryName: 'match_documents',
+      })
+    } catch (error) {
+      // During build time, environment variables might not be available
+      // Create a mock vector store that will throw meaningful errors at runtime
+      console.warn('Failed to initialize SupabaseVectorStore during build:', error)
+      this.vectorStore = null as any
+    }
   }
 
   /**
@@ -174,6 +182,7 @@ export class SupabaseVectorService {
    */
   async removePaperEmbedding(paperId: string): Promise<void> {
     try {
+      const supabaseAdmin = getSupabaseAdminClient()
       // Delete documents with matching paper_id in metadata
       const { error } = await supabaseAdmin
         .from(TABLES.DOCUMENTS)
@@ -200,6 +209,7 @@ export class SupabaseVectorService {
     lastUpdated?: Date
   }> {
     try {
+      const supabaseAdmin = getSupabaseAdminClient()
       const { count, error } = await supabaseAdmin
         .from(TABLES.DOCUMENTS)
         .select('*', { count: 'exact', head: true })

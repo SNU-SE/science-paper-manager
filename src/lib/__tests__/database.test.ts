@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
-import { supabase, TABLES } from '../database'
+import { getSupabaseClient, TABLES } from '../database'
 import { validateDatabaseSetup, testDatabaseOperations, getDatabaseStats } from '../database-validator'
 
 describe('Database Setup', () => {

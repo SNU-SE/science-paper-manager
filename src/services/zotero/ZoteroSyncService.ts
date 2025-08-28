@@ -1,6 +1,6 @@
 import { Paper } from '@/types'
 import { ZoteroService, ZoteroSyncResult, ZoteroItem } from './ZoteroService'
-import { supabase } from '@/lib/database'
+import { getSupabaseClient } from '@/lib/database'
 
 export interface SyncStatus {
   isRunning: boolean
@@ -200,6 +200,7 @@ export class ZoteroSyncService {
    */
   private async findExistingPaper(zoteroKey: string): Promise<Paper | null> {
     try {
+      const supabase = getSupabaseClient()
       const { data, error } = await supabase
         .from('papers')
         .select('*')
@@ -221,6 +222,7 @@ export class ZoteroSyncService {
    * Create new paper in database
    */
   private async createPaper(paperData: Partial<Paper>): Promise<void> {
+    const supabase = getSupabaseClient()
     const { error } = await supabase
       .from('papers')
       .insert({
@@ -244,6 +246,7 @@ export class ZoteroSyncService {
    * Update existing paper in database
    */
   private async updatePaper(paperId: string, paperData: Partial<Paper>): Promise<void> {
+    const supabase = getSupabaseClient()
     const { error } = await supabase
       .from('papers')
       .update({
