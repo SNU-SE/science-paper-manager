@@ -3,8 +3,12 @@
 import { useState } from 'react'
 import { Paper, UserEvaluation, MultiModelAnalysis } from '@/types'
 import { PaperList, PaperDetail } from '@/components/papers'
+import { PaperUpload } from '@/components/papers/PaperUpload'
+import { PaperUploadService } from '@/services/upload/PaperUploadService'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ArrowLeft, Upload, FileText } from 'lucide-react'
+import { toast } from 'sonner'
 
 // Mock data for demonstration
 const mockPapers: Paper[] = [
@@ -101,6 +105,9 @@ export default function PapersPage() {
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null)
   const [papers, setPapers] = useState(mockPapers)
   const [evaluations, setEvaluations] = useState(mockEvaluations)
+  const [activeTab, setActiveTab] = useState('list')
+  
+  const uploadService = new PaperUploadService()
 
   const handleStatusChange = (paperId: string, status: 'unread' | 'reading' | 'completed') => {
     setPapers(prev => prev.map(paper => 
@@ -193,6 +200,27 @@ export default function PapersPage() {
     })
   }
 
+  const handleUploadComplete = (uploadedPapers: Partial<Paper>[]) => {
+    // Add uploaded papers to the list (convert to full Paper objects)
+    const newPapers = uploadedPapers.map(paper => ({
+      ...paper,
+      id: paper.id || `paper_${Date.now()}_${Math.random()}`,
+      title: paper.title || 'Untitled Paper',
+      authors: paper.authors || [],
+      readingStatus: paper.readingStatus || 'unread',
+      dateAdded: paper.dateAdded || new Date(),
+      lastModified: paper.lastModified || new Date()
+    } as Paper))
+    
+    setPapers(prev => [...newPapers, ...prev])
+    toast.success(`Successfully uploaded ${uploadedPapers.length} paper(s)!`)
+    setActiveTab('list') // Switch back to list view
+  }
+
+  const handleUploadError = (error: string) => {
+    toast.error(`Upload failed: ${error}`)
+  }
+
   if (selectedPaper) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -230,14 +258,38 @@ export default function PapersPage() {
         </p>
       </div>
 
-      <PaperList
-        papers={papers}
-        evaluations={evaluations}
-        analyses={mockAnalyses}
-        onPaperClick={setSelectedPaper}
-        onStatusChange={handleStatusChange}
-        onRatingChange={handleRatingChange}
-      />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="list" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Papers ({papers.length})
+          </TabsTrigger>
+          <TabsTrigger value="upload" className="flex items-center gap-2">
+            <Upload className="h-4 w-4" />
+            Upload New
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="mt-6">
+          <PaperList
+            papers={papers}
+            evaluations={evaluations}
+            analyses={mockAnalyses}
+            onPaperClick={setSelectedPaper}
+            onStatusChange={handleStatusChange}
+            onRatingChange={handleRatingChange}
+          />
+        </TabsContent>
+
+        <TabsContent value="upload" className="mt-6">
+          <PaperUpload
+            uploadService={uploadService}
+            onUploadComplete={handleUploadComplete}
+            onUploadError={handleUploadError}
+            className="max-w-4xl"
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
