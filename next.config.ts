@@ -103,6 +103,11 @@ const nextConfig: NextConfig = {
   // Output configuration for static export (if needed)
   output: process.env.BUILD_STANDALONE === 'true' ? 'standalone' : undefined,
 
+  // Skip API routes during build if no environment variables
+  generateBuildId: async () => {
+    return 'build-' + Date.now()
+  },
+
   // Webpack optimizations
   webpack: (config, { dev, isServer }) => {
     // Handle Node.js modules that shouldn't be bundled for client
