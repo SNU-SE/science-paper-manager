@@ -224,6 +224,50 @@ export interface Database {
           embedding?: number[] | null
         }
       }
+      user_google_drive_settings: {
+        Row: {
+          id: string
+          user_id: string
+          client_id: string
+          client_secret: string
+          redirect_uri: string
+          refresh_token: string | null
+          access_token: string | null
+          token_expiry: string | null
+          root_folder_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          client_id: string
+          client_secret: string
+          redirect_uri: string
+          refresh_token?: string | null
+          access_token?: string | null
+          token_expiry?: string | null
+          root_folder_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          client_id?: string
+          client_secret?: string
+          redirect_uri?: string
+          refresh_token?: string | null
+          access_token?: string | null
+          token_expiry?: string | null
+          root_folder_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Functions: {
       match_documents: {
@@ -259,5 +303,9 @@ export type AIAnalysisUpdate = Database['public']['Tables']['ai_analyses']['Upda
 export type Document = Database['public']['Tables']['documents']['Row']
 export type DocumentInsert = Database['public']['Tables']['documents']['Insert']
 export type DocumentUpdate = Database['public']['Tables']['documents']['Update']
+
+export type UserGoogleDriveSettings = Database['public']['Tables']['user_google_drive_settings']['Row']
+export type UserGoogleDriveSettingsInsert = Database['public']['Tables']['user_google_drive_settings']['Insert']
+export type UserGoogleDriveSettingsUpdate = Database['public']['Tables']['user_google_drive_settings']['Update']
 
 export type MatchDocumentsResult = Database['public']['Functions']['match_documents']['Returns'][0]

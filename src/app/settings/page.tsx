@@ -2,6 +2,7 @@
 
 import { ZoteroManager } from '@/components/zotero'
 import { APIKeyManager } from '@/components/ai'
+import { GoogleDriveSettings } from '@/components/settings/GoogleDriveSettings'
 
 export default function SettingsPage() {
   return (
@@ -20,7 +21,12 @@ export default function SettingsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-4">Integrations</h2>
+            <h2 className="text-xl font-semibold mb-4">Cloud Storage</h2>
+            <GoogleDriveSettings />
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold mb-4">Reference Manager</h2>
             <ZoteroManager />
           </section>
         </div>
