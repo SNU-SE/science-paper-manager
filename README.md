@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Science Paper Manager
+
+AI-powered research paper management system with multi-model analysis and semantic search.
+
+## Features
+
+- 🤖 **Multi-Model AI Analysis**: Analyze papers with OpenAI, Anthropic, xAI, and Gemini
+- 🔍 **Semantic Search**: Vector similarity search using pgvector and OpenAI embeddings
+- 📚 **Paper Management**: Organize papers with ratings, notes, tags, and reading status
+- 🔗 **Integrations**: Google Drive storage and Zotero synchronization
+- 💬 **RAG Chat**: Ask questions about your research collection
+
+## Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: Next.js API Routes, Supabase
+- **Database**: PostgreSQL with pgvector extension
+- **Vector Store**: LangChain SupabaseVectorStore
+- **Deployment**: Vercel (Frontend), Supabase (Backend)
+- **Storage**: Google Drive API
+- **AI Services**: OpenAI, Anthropic, xAI, Gemini APIs
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+ and npm
+- Supabase account and project
+- API keys for AI services (stored client-side)
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Copy environment variables:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+4. Update `.env.local` with your configuration:
+   - Supabase URL and keys
+   - Google Drive API credentials
+   - Zotero API credentials
+
+5. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+### Authentication
+
+The system uses simple authentication with hardcoded credentials:
+- Email: `admin@email.com`
+- Password: `1234567890`
+
+### API Keys
+
+AI service API keys are managed client-side through the settings interface for security and cost control.
+
+## Project Structure
+
+```
+src/
+├── app/                 # Next.js app router
+├── components/          # React components
+│   ├── auth/           # Authentication components
+│   ├── papers/         # Paper management components
+│   ├── ai/             # AI analysis components
+│   ├── search/         # Search and RAG components
+│   └── ui/             # shadcn/ui components
+├── services/           # Service layer
+│   ├── ai/             # AI service implementations
+│   └── vector/         # Vector database service
+├── stores/             # Zustand state management
+├── types/              # TypeScript type definitions
+├── utils/              # Utility functions
+└── config/             # Application configuration
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Development
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` - Start development server with Turbopack
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
 
-## Learn More
+### Database Setup
 
-To learn more about Next.js, take a look at the following resources:
+The application requires a Supabase database with pgvector extension. See the design document for the complete schema.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Contributing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This is a personal research tool. For questions or suggestions, please open an issue.
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private project - All rights reserved.
