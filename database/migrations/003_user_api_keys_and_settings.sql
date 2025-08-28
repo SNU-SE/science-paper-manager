@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS user_ai_model_preferences (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   
-  -- Ensure one default model per provider per user
-  CONSTRAINT unique_user_provider_default UNIQUE (user_id, provider, is_default) DEFERRABLE INITIALLY DEFERRED
+  -- Ensure unique combination of user, provider, and model
+  CONSTRAINT unique_user_provider_model UNIQUE (user_id, provider, model_name)
 );
 
 -- Create user_zotero_settings table for Zotero API configuration
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS user_zotero_settings (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   
-  -- Ensure one active configuration per user
-  CONSTRAINT unique_active_zotero_config UNIQUE (user_id, is_active) DEFERRABLE INITIALLY DEFERRED
+  -- Only one active Zotero config per user (handled in application logic)
+  CONSTRAINT unique_user_zotero UNIQUE (user_id)
 );
 
 -- Create indexes for faster lookups
@@ -123,20 +123,30 @@ CREATE TRIGGER update_user_zotero_settings_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Insert default AI model preferences for common providers
--- These will serve as templates when users first set up their API keys
-INSERT INTO user_ai_model_preferences (user_id, provider, model_name, is_default, parameters, created_at)
-VALUES 
-  -- This will be replaced with actual user IDs when they first configure their settings
-  -- For now, we'll handle this in the application layer
-  ('00000000-0000-0000-0000-000000000000', 'openai', 'gpt-4o-mini', true, '{"temperature": 0.7, "max_tokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'openai', 'gpt-4o', false, '{"temperature": 0.7, "max_tokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'anthropic', 'claude-3-5-sonnet-20241022', true, '{"temperature": 0.7, "max_tokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'anthropic', 'claude-3-5-haiku-20241022', false, '{"temperature": 0.7, "max_tokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'xai', 'grok-beta', true, '{"temperature": 0.7, "max_tokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'gemini', 'gemini-1.5-pro', true, '{"temperature": 0.7, "maxOutputTokens": 4000}', now()),
-  ('00000000-0000-0000-0000-000000000000', 'gemini', 'gemini-1.5-flash', false, '{"temperature": 0.7, "maxOutputTokens": 4000}', now())
-ON CONFLICT (user_id, provider, is_default) DO NOTHING;
+-- Function to ensure only one default model per provider per user
+CREATE OR REPLACE FUNCTION ensure_single_default_model() 
+RETURNS TRIGGER AS $$
+BEGIN
+  -- If the new/updated record is set as default
+  IF NEW.is_default = true THEN
+    -- Unset other defaults for the same user and provider
+    UPDATE user_ai_model_preferences 
+    SET is_default = false, updated_at = now()
+    WHERE user_id = NEW.user_id 
+      AND provider = NEW.provider 
+      AND id != NEW.id 
+      AND is_default = true;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- Remove the default entries (they were just for reference)
-DELETE FROM user_ai_model_preferences WHERE user_id = '00000000-0000-0000-0000-000000000000';
+-- Trigger to maintain single default model per provider per user
+CREATE TRIGGER trigger_ensure_single_default_model
+  BEFORE INSERT OR UPDATE ON user_ai_model_preferences
+  FOR EACH ROW
+  EXECUTE FUNCTION ensure_single_default_model();
+
+-- Note: Default model preferences will be created through the application
+-- when users first configure their API keys
