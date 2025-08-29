@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/components/auth/AuthProvider'
-import { UserGoogleDriveService, UserGoogleDriveConfig } from '@/services/google-drive/UserGoogleDriveService'
+import { UserGoogleDriveServiceClient, UserGoogleDriveConfig } from '@/services/google-drive/UserGoogleDriveService.client'
 import { UserGoogleDriveSettings } from '@/lib/database'
 import { 
   Save, 
@@ -43,7 +43,7 @@ export function GoogleDriveSettings() {
     rootFolderId: ''
   })
 
-  const userGoogleDriveService = new UserGoogleDriveService()
+  const userGoogleDriveService = new UserGoogleDriveServiceClient()
 
   // Load user settings on mount
   useEffect(() => {
@@ -164,13 +164,23 @@ export function GoogleDriveSettings() {
 
   const getAuthUrl = async () => {
     try {
-      const driveService = await userGoogleDriveService.createGoogleDriveService(user?.id || '')
-      if (driveService) {
-        const authUrl = driveService.getAuthUrl()
-        window.open(authUrl, '_blank')
-        toast.info('Complete the OAuth flow and copy the refresh token back here')
+      // Call API route instead of direct service
+      const response = await fetch('/api/google-drive/auth?action=auth-url', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to get auth URL')
       }
+      
+      const { authUrl } = await response.json()
+      window.open(authUrl, '_blank')
+      toast.info('Complete the OAuth flow and copy the refresh token back here')
     } catch (error) {
+      console.error('Error getting auth URL:', error)
       toast.error('Failed to generate auth URL. Please save your settings first.')
     }
   }

@@ -11,12 +11,13 @@ import { APIKeyManager } from '@/components/ai/APIKeyManager'
 import { AIModelSelector } from '@/components/ai/AIModelSelector'
 import { GoogleDriveSettings } from '@/components/settings/GoogleDriveSettings'
 import { SettingsBackup } from '@/components/settings/SettingsBackup'
+import { EnvironmentStatus } from '@/components/settings/EnvironmentStatus'
 import { useAuthenticationSecurity } from '@/hooks/useAuthenticationSecurity'
 import { useAuth } from '@/components/auth/AuthProvider'
-import { Bot, Key, Cloud, BookOpen, Shield, AlertTriangle, Download } from 'lucide-react'
+import { Bot, Key, Cloud, BookOpen, Shield, AlertTriangle, Download, Settings } from 'lucide-react'
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('ai-config')
+  const [activeTab, setActiveTab] = useState('system-status')
   const { isAuthenticated, isSessionValid, error, verifyUserSession } = useAuthenticationSecurity()
   const { user } = useAuth()
 
@@ -57,7 +58,11 @@ export default function SettingsPage() {
             </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
+            <TabsTrigger value="system-status" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              System Status
+            </TabsTrigger>
             <TabsTrigger value="ai-config" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
               AI Configuration
@@ -81,6 +86,10 @@ export default function SettingsPage() {
           </TabsList>
 
           <div className="mt-6">
+            <TabsContent value="system-status" className="space-y-6">
+              <EnvironmentStatus />
+            </TabsContent>
+
             <TabsContent value="ai-config" className="space-y-6">
               <Card>
                 <CardHeader>

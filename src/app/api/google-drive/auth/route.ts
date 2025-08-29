@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleDriveService } from '@/lib/google-drive';
+import { isGoogleDriveConfigured, getEnvConfig } from '@/lib/env-check';
 
 export async function GET(request: NextRequest) {
   try {
+    if (!isGoogleDriveConfigured()) {
+      return NextResponse.json(
+        { error: 'Google Drive is not configured. Please check environment variables.' },
+        { status: 503 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
@@ -11,13 +19,6 @@ export async function GET(request: NextRequest) {
       clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
       redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI!
     };
-
-    if (!config.clientId || !config.clientSecret || !config.redirectUri) {
-      return NextResponse.json(
-        { error: 'Google Drive configuration is incomplete' },
-        { status: 500 }
-      );
-    }
 
     const driveService = new GoogleDriveService(config);
 
@@ -47,6 +48,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isGoogleDriveConfigured()) {
+      return NextResponse.json(
+        { error: 'Google Drive is not configured. Please check environment variables.' },
+        { status: 503 }
+      );
+    }
+
     const { code } = await request.json();
 
     if (!code) {
