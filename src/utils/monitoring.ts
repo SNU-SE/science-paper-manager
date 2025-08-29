@@ -67,7 +67,8 @@ class MonitoringService {
 
     try {
       // Dynamic import to avoid bundling Sentry if not needed
-      import('@sentry/nextjs').then((Sentry) => {
+      if (typeof window !== 'undefined') {
+        import('@sentry/nextjs').then((Sentry) => {
         Sentry.init({
           dsn: sentryDsn,
           environment: process.env.NODE_ENV,
@@ -90,7 +91,10 @@ class MonitoringService {
         if (this.userId) {
           Sentry.setUser({ id: this.userId })
         }
-      })
+        }).catch((error) => {
+          console.warn('Sentry not available:', error)
+        })
+      }
     } catch (error) {
       console.warn('Failed to initialize Sentry:', error)
     }

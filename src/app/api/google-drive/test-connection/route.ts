@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { UserGoogleDriveService } from '@/services/google-drive/UserGoogleDriveService'
+import { UserGoogleDriveServiceClient } from '@/services/google-drive/UserGoogleDriveService.client'
 import { isGoogleDriveConfigured } from '@/lib/env-check'
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userGoogleDriveService = new UserGoogleDriveService()
+    const userGoogleDriveService = new UserGoogleDriveServiceClient()
     const isConnected = await userGoogleDriveService.testConnection(userId)
 
     return NextResponse.json({

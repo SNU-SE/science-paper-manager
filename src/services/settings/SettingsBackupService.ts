@@ -14,7 +14,7 @@ import {
 import { UserAiModelService } from './UserAiModelService'
 import { UserApiKeyService } from './UserApiKeyService'
 import { UserZoteroService } from './UserZoteroService'
-import { UserGoogleDriveService } from '../google-drive/UserGoogleDriveService'
+import { UserGoogleDriveServiceClient } from '../google-drive/UserGoogleDriveService.client'
 import CryptoJS from 'crypto-js'
 
 export class SettingsBackupService {
@@ -22,7 +22,7 @@ export class SettingsBackupService {
   private aiModelService = new UserAiModelService()
   private apiKeyService = new UserApiKeyService()
   private zoteroService = new UserZoteroService()
-  private googleDriveService = new UserGoogleDriveService()
+  private googleDriveService = new UserGoogleDriveServiceClient()
   
   private readonly BACKUP_VERSION = '1.0.0'
   private readonly encryptionKey = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'fallback-key-for-development'

@@ -14,10 +14,6 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // Compiler optimizations
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
 
   // Image optimization
   images: {
@@ -27,17 +23,7 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
   },
 
-  // Bundle analyzer (enable with ANALYZE=true)
-  ...(process.env.ANALYZE === 'true' && {
-    webpack: (config: any) => {
-      config.plugins.push(
-        new (require('@next/bundle-analyzer'))({
-          enabled: true,
-        })
-      );
-      return config;
-    },
-  }),
+  // Bundle analyzer disabled to fix webpack conflicts
 
   // Security headers
   async headers() {
@@ -108,6 +94,11 @@ const nextConfig: NextConfig = {
     return 'build-' + Date.now()
   },
 
+  // Disable minification to fix webpack errors
+  compiler: {
+    removeConsole: false,
+  },
+
   // Webpack optimizations
   webpack: (config, { dev, isServer }) => {
     // Handle Node.js modules that shouldn't be bundled for client
@@ -134,45 +125,33 @@ const nextConfig: NextConfig = {
         events: false,
       };
 
-      // Exclude googleapis from client bundle
+      // Exclude server-only libraries from client bundle
       config.externals = config.externals || [];
       config.externals.push({
         googleapis: 'googleapis',
         'google-auth-library': 'google-auth-library',
+        'googleapis-common': 'googleapis-common',
+        gaxios: 'gaxios',
+        'gcp-metadata': 'gcp-metadata',
+        'google-p12-pem': 'google-p12-pem',
+        '@sentry/nextjs': '@sentry/nextjs'
+      });
+      
+      // Prevent googleapis from being processed by webpack
+      config.module.rules.push({
+        test: /node_modules[\/\\]googleapis/,
+        use: 'null-loader',
+      });
+      
+      config.module.rules.push({
+        test: /node_modules[\/\\]google-auth-library/,
+        use: 'null-loader',
       });
     }
 
-    // Optimize bundle size
-    if (!dev && !isServer) {
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            chunks: 'all',
-          },
-          common: {
-            name: 'common',
-            minChunks: 2,
-            chunks: 'all',
-            enforce: true,
-          },
-        },
-      };
-    }
+    // Bundle optimization disabled to fix webpack conflicts
 
-    // Add bundle analyzer in development
-    if (dev && process.env.ANALYZE === 'true') {
-      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-      config.plugins.push(
-        new BundleAnalyzerPlugin({
-          analyzerMode: 'server',
-          analyzerPort: 8888,
-          openAnalyzer: true,
-        })
-      );
-    }
+    // Bundle analyzer disabled to fix webpack conflicts
 
     return config;
   },
@@ -186,6 +165,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true, // Temporarily ignore ESLint errors during build
   },
+
 
   // Logging configuration
   logging: {

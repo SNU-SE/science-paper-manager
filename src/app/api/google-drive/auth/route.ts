@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleDriveService } from '@/lib/google-drive';
 import { isGoogleDriveConfigured, getEnvConfig } from '@/lib/env-check';
 
 export async function GET(request: NextRequest) {
@@ -14,17 +13,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
-    const config = {
-      clientId: process.env.GOOGLE_DRIVE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
-      redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI!
-    };
-
-    const driveService = new GoogleDriveService(config);
+    const { google } = await import('googleapis');
+    
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_DRIVE_CLIENT_ID!,
+      process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
+      process.env.GOOGLE_DRIVE_REDIRECT_URI!
+    );
 
     switch (action) {
       case 'auth-url':
-        const authUrl = driveService.getAuthUrl();
+        const authUrl = oauth2Client.generateAuthUrl({
+          access_type: 'offline',
+          scope: [
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive.metadata.readonly'
+          ],
+          prompt: 'consent'
+        });
         return NextResponse.json({ authUrl });
 
       default:
@@ -64,14 +70,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = {
-      clientId: process.env.GOOGLE_DRIVE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
-      redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI!
-    };
+    const { google } = await import('googleapis');
+    
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_DRIVE_CLIENT_ID!,
+      process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
+      process.env.GOOGLE_DRIVE_REDIRECT_URI!
+    );
 
-    const driveService = new GoogleDriveService(config);
-    const tokens = await driveService.getTokens(code);
+    const { tokens } = await oauth2Client.getToken(code);
 
     return NextResponse.json({
       success: true,
