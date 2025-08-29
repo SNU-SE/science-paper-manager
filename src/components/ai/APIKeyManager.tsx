@@ -10,10 +10,12 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
-import { Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, DollarSign } from 'lucide-react'
+import { Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, DollarSign, RefreshCw, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { UserApiKeyService, AIProvider, APIKeyInfo } from '@/services/settings/UserApiKeyService'
+import { useApiKeyValidation, useSettingsSave } from '@/hooks/useSettingsValidation'
+import { SettingsError } from '@/lib/settings-error-handler'
 
 export interface APIKeyManagerProps {
   onKeysUpdate?: (keys: APIKeyInfo[]) => void
@@ -53,12 +55,15 @@ const AI_SERVICES = [
 export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
   const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([])
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
-  const [validatingKeys, setValidatingKeys] = useState<Record<string, boolean>>({})
   const [tempKeys, setTempKeys] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [validationStates, setValidationStates] = useState<Record<string, any>>({})
+  
   const { toast } = useToast()
   const { user } = useAuth()
   const apiKeyService = new UserApiKeyService()
+  const { validateApiKey, validationState, retryValidation, clearValidation, isRetryable } = useApiKeyValidation()
+  const { saveSettings, saveState } = useSettingsSave()
 
   // Load API keys from Supabase on mount
   useEffect(() => {
@@ -89,14 +94,13 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
     onKeysUpdate?.(apiKeys)
   }, [apiKeys, onKeysUpdate])
 
-  const validateApiKey = async (serviceId: AIProvider, key: string, showToast = true) => {
-    if (!key.trim() || !user) return
+  const validateApiKeyForProvider = async (serviceId: AIProvider, key: string) => {
+    if (!user) return false
 
-    setValidatingKeys(prev => ({ ...prev, [serviceId]: true }))
-
-    try {
+    // Create a test function for this specific provider
+    const testFunction = async (apiKey: string): Promise<boolean> => {
       // Save the API key first
-      await apiKeyService.saveApiKey(user.id, { provider: serviceId, apiKey: key })
+      await apiKeyService.saveApiKey(user.id, { provider: serviceId, apiKey })
       
       // Then validate it
       const isValid = await apiKeyService.validateApiKey(user.id, serviceId)
@@ -104,64 +108,66 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
       // Reload the keys to get updated status
       const updatedKeys = await apiKeyService.getUserApiKeys(user.id)
       setApiKeys(updatedKeys)
-
-      if (showToast) {
-        toast({
-          title: isValid ? 'API Key Valid' : 'API Key Invalid',
-          description: isValid 
-            ? `${AI_SERVICES.find(s => s.id === serviceId)?.name} API key is working correctly`
-            : `${AI_SERVICES.find(s => s.id === serviceId)?.name} API key is invalid or expired`,
-          variant: isValid ? 'default' : 'destructive'
-        })
-      }
-    } catch (error) {
-      console.error(`Error validating ${serviceId} API key:`, error)
       
-      if (showToast) {
-        toast({
-          title: 'Validation Error',
-          description: `Failed to validate ${AI_SERVICES.find(s => s.id === serviceId)?.name} API key`,
-          variant: 'destructive'
-        })
-      }
-    } finally {
-      setValidatingKeys(prev => ({ ...prev, [serviceId]: false }))
+      return isValid
     }
+
+    const serviceName = AI_SERVICES.find(s => s.id === serviceId)?.name || serviceId
+
+    return validateApiKey(
+      serviceName,
+      key,
+      testFunction,
+      {
+        showToast: true,
+        onSuccess: () => {
+          // Clear the temp key on successful validation
+          setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
+        },
+        onError: (error: SettingsError) => {
+          console.error(`Error validating ${serviceId} API key:`, error)
+        }
+      }
+    )
   }
 
   const handleKeyChange = (serviceId: AIProvider, value: string) => {
     setTempKeys(prev => ({ ...prev, [serviceId]: value }))
   }
 
-  const handleKeySave = (serviceId: AIProvider) => {
+  const handleKeySave = async (serviceId: AIProvider) => {
     const key = tempKeys[serviceId]?.trim() || ''
-    validateApiKey(serviceId, key)
+    if (!key) {
+      toast({
+        title: 'API Key Required',
+        description: 'Please enter an API key before saving',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    await validateApiKeyForProvider(serviceId, key)
   }
 
   const handleKeyDelete = async (serviceId: AIProvider) => {
     if (!user) return
     
-    try {
-      await apiKeyService.deleteApiKey(user.id, serviceId)
-      
-      // Reload keys
-      const updatedKeys = await apiKeyService.getUserApiKeys(user.id)
-      setApiKeys(updatedKeys)
-      
-      setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
-      
-      toast({
-        title: 'API Key Removed',
-        description: `${AI_SERVICES.find(s => s.id === serviceId)?.name} API key has been removed`
-      })
-    } catch (error) {
-      console.error('Error deleting API key:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to delete API key',
-        variant: 'destructive'
-      })
-    }
+    const serviceName = AI_SERVICES.find(s => s.id === serviceId)?.name || serviceId
+    
+    const result = await saveSettings(
+      () => apiKeyService.deleteApiKey(user.id, serviceId),
+      { provider: serviceName, operation: 'delete' },
+      {
+        showToast: true,
+        onSuccess: async () => {
+          // Reload keys
+          const updatedKeys = await apiKeyService.getUserApiKeys(user.id)
+          setApiKeys(updatedKeys)
+          setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
+          clearValidation()
+        }
+      }
+    )
   }
 
   const handleServiceToggle = async (serviceId: AIProvider, enabled: boolean) => {
@@ -188,15 +194,42 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
     setShowKeys(prev => ({ ...prev, [serviceId]: !prev[serviceId] }))
   }
 
-  const getStatusIcon = (keyInfo?: APIKeyInfo) => {
+  const getStatusIcon = (keyInfo?: APIKeyInfo, serviceId?: AIProvider) => {
+    // Check if currently validating this specific service
+    if (validationState.isValidating && validationState.error?.provider === serviceId) {
+      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+    }
+    
     if (!keyInfo || !keyInfo.hasKey) return <AlertTriangle className="h-4 w-4 text-gray-400" />
     if (keyInfo.isValid) return <CheckCircle className="h-4 w-4 text-green-500" />
     return <XCircle className="h-4 w-4 text-red-500" />
   }
 
-  const getStatusBadge = (keyInfo?: APIKeyInfo) => {
+  const getStatusBadge = (keyInfo?: APIKeyInfo, serviceId?: AIProvider) => {
+    // Check if currently validating this specific service
+    if (validationState.isValidating && validationState.error?.provider === serviceId) {
+      return <Badge variant="secondary">Validating...</Badge>
+    }
+    
     if (!keyInfo || !keyInfo.hasKey) return <Badge variant="secondary">Not Set</Badge>
     if (keyInfo.isValid) return <Badge variant="default">Valid</Badge>
+    
+    // Show more specific error states
+    if (validationState.error?.provider === serviceId) {
+      switch (validationState.error.settingsType) {
+        case 'API_KEY_EXPIRED':
+          return <Badge variant="destructive">Expired</Badge>
+        case 'API_KEY_INSUFFICIENT_PERMISSIONS':
+          return <Badge variant="destructive">No Permissions</Badge>
+        case 'API_KEY_RATE_LIMITED':
+          return <Badge variant="destructive">Rate Limited</Badge>
+        case 'API_KEY_MALFORMED':
+          return <Badge variant="destructive">Invalid Format</Badge>
+        default:
+          return <Badge variant="destructive">Invalid</Badge>
+      }
+    }
+    
     return <Badge variant="destructive">Invalid</Badge>
   }
 
@@ -279,23 +312,26 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
         <TabsContent value="keys" className="space-y-4">
           {AI_SERVICES.map(service => {
             const keyInfo = apiKeys.find(k => k.provider === service.id)
-            const isValidating = validatingKeys[service.id]
             const tempKey = tempKeys[service.id] || ''
             const showKey = showKeys[service.id]
+            const isCurrentlyValidating = validationState.isValidating && validationState.error?.provider === service.name
+            const isCurrentlySaving = saveState.isSaving
+            const hasValidationError = validationState.error?.provider === service.name
+            const canRetry = hasValidationError && isRetryable
 
             return (
               <Card key={service.id}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {getStatusIcon(keyInfo)}
+                      {getStatusIcon(keyInfo, service.id)}
                       <div>
                         <CardTitle className="text-lg">{service.name}</CardTitle>
                         <CardDescription>{service.description}</CardDescription>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {getStatusBadge(keyInfo)}
+                      {getStatusBadge(keyInfo, service.id)}
                       <Switch
                         checked={keyInfo?.isValid || false}
                         onCheckedChange={(enabled) => handleServiceToggle(service.id, enabled)}
@@ -316,6 +352,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                           value={tempKey}
                           onChange={(e) => handleKeyChange(service.id, e.target.value)}
                           className="pr-10"
+                          disabled={isCurrentlyValidating || isCurrentlySaving}
                         />
                         <Button
                           type="button"
@@ -323,6 +360,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                           size="sm"
                           className="absolute right-0 top-0 h-full px-3"
                           onClick={() => toggleKeyVisibility(service.id)}
+                          disabled={isCurrentlyValidating || isCurrentlySaving}
                         >
                           {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
@@ -331,16 +369,42 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                     <div className="flex flex-col gap-2 pt-6">
                       <Button
                         onClick={() => handleKeySave(service.id)}
-                        disabled={isValidating || !tempKey.trim()}
+                        disabled={isCurrentlyValidating || isCurrentlySaving || !tempKey.trim()}
                         size="sm"
                       >
-                        {isValidating ? 'Validating...' : 'Save & Validate'}
+                        {isCurrentlyValidating ? (
+                          <>
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Validating...
+                          </>
+                        ) : isCurrentlySaving ? (
+                          <>
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save & Validate'
+                        )}
                       </Button>
+                      
+                      {canRetry && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={retryValidation}
+                          disabled={isCurrentlyValidating}
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1" />
+                          Retry
+                        </Button>
+                      )}
+                      
                       {keyInfo?.hasKey && (
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleKeyDelete(service.id)}
+                          disabled={isCurrentlyValidating || isCurrentlySaving}
                         >
                           Remove
                         </Button>
@@ -348,9 +412,31 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                     </div>
                   </div>
 
+                  {/* Enhanced error display */}
+                  {hasValidationError && validationState.error && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <div className="space-y-1">
+                          <div className="font-medium">{validationState.error.message}</div>
+                          {validationState.error.suggestedAction && (
+                            <div className="text-sm opacity-90">
+                              {validationState.error.suggestedAction}
+                            </div>
+                          )}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   {keyInfo?.lastValidatedAt && (
                     <div className="text-sm text-gray-600">
                       Last validated: {keyInfo.lastValidatedAt.toLocaleString()}
+                      {validationState.retryCount > 0 && (
+                        <span className="ml-2 text-orange-600">
+                          (Retry #{validationState.retryCount})
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -363,6 +449,12 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
                     >
                       Get API Key →
                     </a>
+                    
+                    {keyInfo?.isValid && (
+                      <div className="text-green-600 text-xs">
+                        ✓ Ready to use
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

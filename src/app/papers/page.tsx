@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Paper, UserEvaluation, MultiModelAnalysis } from '@/types'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { PaperList, PaperDetail } from '@/components/papers'
 import { PaperUpload } from '@/components/papers/PaperUpload'
 import { PaperUploadService } from '@/services/upload/PaperUploadService'
@@ -223,7 +224,8 @@ export default function PapersPage() {
 
   if (selectedPaper) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <ProtectedRoute>
+        <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
           <Button
             variant="ghost"
@@ -245,12 +247,14 @@ export default function PapersPage() {
           onTagsChange={handleTagsChange}
           onClose={() => setSelectedPaper(null)}
         />
-      </div>
+        </div>
+      </ProtectedRoute>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <ProtectedRoute>
+      <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Research Papers</h1>
         <p className="text-gray-600">
@@ -290,6 +294,7 @@ export default function PapersPage() {
           />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

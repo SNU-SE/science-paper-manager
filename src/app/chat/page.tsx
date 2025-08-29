@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { Download, Upload, Trash2, Settings, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -78,19 +79,22 @@ export default function ChatPage() {
 
   if (!openaiApiKey) {
     return (
-      <div className="container mx-auto py-8">
+      <ProtectedRoute>
+        <div className="container mx-auto py-8">
         <Alert>
           <Settings className="h-4 w-4" />
           <AlertDescription>
             Please configure your OpenAI API key in the settings to use the RAG chat feature.
           </AlertDescription>
         </Alert>
-      </div>
+        </div>
+      </ProtectedRoute>
     )
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <ProtectedRoute>
+      <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -262,6 +266,7 @@ export default function ChatPage() {
           />
         </div>
       </div>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

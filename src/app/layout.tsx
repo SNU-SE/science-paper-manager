@@ -6,6 +6,7 @@ import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ErrorProvider } from "@/components/error/ErrorProvider";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { PerformanceProvider } from "@/components/performance/PerformanceProvider";
+import { GlobalNavigation } from "@/components/layout/GlobalNavigation";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +45,14 @@ export default function RootLayout({
               enableAsyncErrorBoundary={true}
             >
               <AuthProvider>
-                {children}
+                {/* 접근성 개선: 건너뛰기 링크 */}
+                <a href="#main-content" className="skip-link">
+                  Skip to main content
+                </a>
+                <GlobalNavigation />
+                <main id="main-content" className="min-h-screen">
+                  {children}
+                </main>
               </AuthProvider>
               <Toaster />
             </ErrorProvider>

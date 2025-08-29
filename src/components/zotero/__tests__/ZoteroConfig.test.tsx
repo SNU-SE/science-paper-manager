@@ -8,6 +8,14 @@ jest.mock('@/hooks/use-toast', () => ({
   })
 }))
 
+// Mock the auth hook
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: jest.fn()
+}))
+
+import { useAuth } from '@/components/auth/AuthProvider'
+const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>
+
 // Mock fetch
 global.fetch = jest.fn()
 const mockFetch = fetch as jest.MockedFunction<typeof fetch>
@@ -15,17 +23,15 @@ const mockFetch = fetch as jest.MockedFunction<typeof fetch>
 describe('ZoteroConfig', () => {
   beforeEach(() => {
     mockFetch.mockClear()
+    mockUseAuth.mockReturnValue({
+      user: { id: 'test-user-id', email: 'test@example.com' } as any,
+      session: {} as any,
+      signOut: jest.fn(),
+      signIn: jest.fn()
+    })
   })
 
   it('should render configuration form when not configured', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        success: true,
-        data: { isConfigured: false, config: null }
-      })
-    } as Response)
-
     render(<ZoteroConfig />)
 
     await waitFor(() => {

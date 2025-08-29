@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import { UserAiModelService, ModelPreference, ModelOption } from '@/services/set
 import { AIProvider } from '@/services/settings/UserApiKeyService'
 import { CheckCircle, XCircle, Loader2, Key, Settings, Sliders } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { debounce } from '@/utils'
 
 export interface AIModelSelectorProps {
   onPreferencesUpdate?: (preferences: ModelPreference[]) => void
@@ -52,6 +53,11 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         
         setAvailableModels(modelsMap)
         
+        // If user has no preferences but has API keys, initialize default models
+        if (preferences.length === 0) {
+          await initializeDefaultModelsIfNeeded()
+        }
+        
       } catch (error) {
         console.error('Error loading model data:', error)
         toast({
@@ -67,30 +73,72 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
     loadData()
   }, [user])
 
-  const handleModelChange = async (provider: AIProvider, modelName: string) => {
+  // Initialize default models for providers that have API keys
+  const initializeDefaultModelsIfNeeded = async () => {
     if (!user) return
+    
+    try {
+      const providers: AIProvider[] = ['openai', 'anthropic', 'xai', 'gemini']
+      
+      for (const provider of providers) {
+        // Check if user has API key for this provider (this would need to be implemented)
+        // For now, we'll just initialize the first model for each provider
+        const models = modelService.getAvailableModels(provider)
+        if (models.length > 0) {
+          await modelService.initializeDefaultModels(user.id, provider)
+        }
+      }
+      
+      // Reload preferences after initialization
+      const updatedPreferences = await modelService.getUserModelPreferences(user.id)
+      setModelPreferences(updatedPreferences)
+      onPreferencesUpdate?.(updatedPreferences)
+      
+    } catch (error) {
+      console.error('Error initializing default models:', error)
+    }
+  }
+
+  const handleModelChange = async (provider: AIProvider, modelName: string) => {
+    if (!user) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please sign in to configure AI models',
+        variant: 'destructive'
+      })
+      return
+    }
     
     setSaving(prev => ({ ...prev, [`${provider}-${modelName}`]: true }))
     
     try {
+      // Check if this is the first model for this provider
+      const existingPreferences = modelPreferences.filter(p => p.provider === provider)
+      const isFirstModel = existingPreferences.length === 0
+      
       await modelService.saveModelPreference(user.id, provider, modelName, {
-        isEnabled: true
+        isEnabled: true,
+        isDefault: isFirstModel // Set as default if it's the first model for this provider
       })
       
-      // Reload preferences
+      // Update local state immediately for better UX
+      const modelDisplayName = availableModels[provider]?.find(m => m.name === modelName)?.displayName || modelName
+      
+      // Reload preferences to ensure consistency
       const updatedPreferences = await modelService.getUserModelPreferences(user.id)
       setModelPreferences(updatedPreferences)
       onPreferencesUpdate?.(updatedPreferences)
       
       toast({
-        title: 'Model Updated',
-        description: `${modelName} has been set for ${provider}`
+        title: 'Model Configured',
+        description: `${modelDisplayName} has been configured for ${getProviderDisplayName(provider)}${isFirstModel ? ' and set as default' : ''}`
       })
     } catch (error) {
       console.error('Error saving model preference:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast({
-        title: 'Error',
-        description: 'Failed to save model preference',
+        title: 'Configuration Failed',
+        description: `Failed to configure model: ${errorMessage}`,
         variant: 'destructive'
       })
     } finally {
@@ -106,14 +154,24 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
     try {
       await modelService.setDefaultModel(user.id, provider, modelName)
       
-      // Reload preferences
+      // Update local state immediately for better UX
+      setModelPreferences(prev => 
+        prev.map(pref => ({
+          ...pref,
+          isDefault: pref.provider === provider && pref.modelName === modelName
+        }))
+      )
+      
+      // Reload preferences to ensure consistency
       const updatedPreferences = await modelService.getUserModelPreferences(user.id)
       setModelPreferences(updatedPreferences)
       onPreferencesUpdate?.(updatedPreferences)
       
+      const modelDisplayName = availableModels[provider]?.find(m => m.name === modelName)?.displayName || modelName
+      
       toast({
         title: 'Default Model Set',
-        description: `${modelName} is now the default for ${provider}`
+        description: `${modelDisplayName} is now the default for ${getProviderDisplayName(provider)}`
       })
     } catch (error) {
       console.error('Error setting default model:', error)
@@ -127,24 +185,91 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
     }
   }
   
+  // Debounced parameter update for real-time saving
+  const debouncedParameterUpdate = useCallback(
+    debounce(async (provider: AIProvider, modelName: string, parameters: Record<string, any>) => {
+      if (!user) return
+      
+      try {
+        await modelService.updateModelParameters(user.id, provider, modelName, parameters)
+        
+        // Update local state immediately for better UX
+        setModelPreferences(prev => 
+          prev.map(pref => 
+            pref.provider === provider && pref.modelName === modelName
+              ? { ...pref, parameters }
+              : pref
+          )
+        )
+        
+        toast({
+          title: 'Parameters Updated',
+          description: 'Model parameters saved successfully',
+          variant: 'default'
+        })
+        
+      } catch (error) {
+        console.error('Error updating parameters:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to update model parameters',
+          variant: 'destructive'
+        })
+      }
+    }, 1000), // 1 second debounce
+    [user, modelService, toast]
+  )
+
   const handleParameterUpdate = async (provider: AIProvider, modelName: string, parameters: Record<string, any>) => {
     if (!user) return
     
+    // Update local state immediately for responsive UI
+    setModelPreferences(prev => 
+      prev.map(pref => 
+        pref.provider === provider && pref.modelName === modelName
+          ? { ...pref, parameters }
+          : pref
+      )
+    )
+    
+    // Trigger debounced save
+    debouncedParameterUpdate(provider, modelName, parameters)
+  }
+
+  const handleRemoveModel = async (provider: AIProvider, modelName: string) => {
+    if (!user) return
+    
+    setSaving(prev => ({ ...prev, [`${provider}-${modelName}-remove`]: true }))
+    
     try {
-      await modelService.updateModelParameters(user.id, provider, modelName, parameters)
+      await modelService.deleteModelPreference(user.id, provider, modelName)
       
-      // Reload preferences
+      // Update local state immediately
+      setModelPreferences(prev => 
+        prev.filter(pref => !(pref.provider === provider && pref.modelName === modelName))
+      )
+      
+      // Reload preferences to ensure consistency
       const updatedPreferences = await modelService.getUserModelPreferences(user.id)
       setModelPreferences(updatedPreferences)
       onPreferencesUpdate?.(updatedPreferences)
       
-    } catch (error) {
-      console.error('Error updating parameters:', error)
+      const modelDisplayName = availableModels[provider]?.find(m => m.name === modelName)?.displayName || modelName
+      
       toast({
-        title: 'Error',
-        description: 'Failed to update model parameters',
+        title: 'Model Removed',
+        description: `${modelDisplayName} has been removed from ${getProviderDisplayName(provider)}`
+      })
+    } catch (error) {
+      console.error('Error removing model preference:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      toast({
+        title: 'Removal Failed',
+        description: `Failed to remove model: ${errorMessage}`,
         variant: 'destructive'
       })
+    } finally {
+      setSaving(prev => ({ ...prev, [`${provider}-${modelName}-remove`]: false }))
     }
   }
 
@@ -184,7 +309,8 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
   }
 
   const enabledModelsCount = modelPreferences.filter(p => p.isEnabled).length
-  const totalModelsCount = Object.keys(availableModels).length
+  const defaultModelsCount = modelPreferences.filter(p => p.isDefault).length
+  const totalAvailableModels = Object.values(availableModels).reduce((sum, models) => sum + models.length, 0)
 
   return (
     <div className="space-y-6">
@@ -195,12 +321,28 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
             Configure AI models and their parameters for each provider
           </p>
         </div>
-        {enabledModelsCount > 0 && (
-          <Badge variant="secondary">
-            {enabledModelsCount} models configured
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {enabledModelsCount > 0 && (
+            <Badge variant="secondary">
+              {enabledModelsCount} of {totalAvailableModels} models configured
+            </Badge>
+          )}
+          {defaultModelsCount > 0 && (
+            <Badge variant="default">
+              {defaultModelsCount} default models set
+            </Badge>
+          )}
+        </div>
       </div>
+
+      {enabledModelsCount === 0 && (
+        <Alert>
+          <Settings className="h-4 w-4" />
+          <AlertDescription>
+            No AI models are configured yet. Add models below to start using AI analysis features.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6">
         {(Object.keys(availableModels) as AIProvider[]).map(provider => {
@@ -214,13 +356,24 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
             <Card key={provider}>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>{getProviderDisplayName(provider)}</span>
+                  <div className="flex items-center gap-2">
+                    <span>{getProviderDisplayName(provider)}</span>
+                    {preferences.length === 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        Not configured
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     {preferences.length > 0 && (
-                      <Badge variant="outline">{preferences.length} models configured</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {preferences.length} of {models.length} models
+                      </Badge>
                     )}
                     {defaultPreference && (
-                      <Badge variant="default">Default: {defaultPreference.displayName}</Badge>
+                      <Badge variant="default" className="text-xs">
+                        Default: {defaultPreference.displayName}
+                      </Badge>
                     )}
                   </div>
                 </CardTitle>
@@ -239,15 +392,26 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
                         const isConfiguring = saving[`${provider}-${model.name}`]
                         
                         return (
-                          <div key={model.name} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div key={model.name} className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                            preference?.isEnabled ? 'border-green-200 bg-green-50' : 'border-gray-200'
+                          }`}>
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-medium">{model.displayName}</h4>
                                 {preference?.isDefault && (
                                   <Badge variant="default" size="sm">Default</Badge>
                                 )}
-                                {preference && !preference.isDefault && (
-                                  <Badge variant="outline" size="sm">Configured</Badge>
+                                {preference && !preference.isDefault && preference.isEnabled && (
+                                  <Badge variant="outline" size="sm">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Configured
+                                  </Badge>
+                                )}
+                                {!preference && (
+                                  <Badge variant="secondary" size="sm">
+                                    <XCircle className="h-3 w-3 mr-1" />
+                                    Not Configured
+                                  </Badge>
                                 )}
                               </div>
                               {model.description && (
@@ -259,31 +423,55 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleModelChange(provider, model.name)}
-                                disabled={isConfiguring}
-                              >
-                                {isConfiguring ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  preference ? 'Update' : 'Add'
-                                )}
-                              </Button>
-                              {preference && !preference.isDefault && (
+                              {!preference ? (
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  onClick={() => handleSetDefaultModel(provider, model.name)}
-                                  disabled={saving[`${provider}-default`]}
+                                  onClick={() => handleModelChange(provider, model.name)}
+                                  disabled={isConfiguring}
                                 >
-                                  {saving[`${provider}-default`] ? (
+                                  {isConfiguring ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
-                                    'Set Default'
+                                    'Add Model'
                                   )}
                                 </Button>
+                              ) : (
+                                <>
+                                  {!preference.isDefault && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleRemoveModel(provider, model.name)}
+                                      disabled={saving[`${provider}-${model.name}-remove`]}
+                                    >
+                                      {saving[`${provider}-${model.name}-remove`] ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        'Remove'
+                                      )}
+                                    </Button>
+                                  )}
+                                  {!preference.isDefault && (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => handleSetDefaultModel(provider, model.name)}
+                                      disabled={saving[`${provider}-default`]}
+                                    >
+                                      {saving[`${provider}-default`] ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        'Set Default'
+                                      )}
+                                    </Button>
+                                  )}
+                                  {preference.isDefault && (
+                                    <Badge variant="default" size="sm" className="px-2">
+                                      Current Default
+                                    </Badge>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -309,6 +497,10 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
                             modelName={preference.modelName}
                             parameters={preference.parameters}
                             onParametersChange={(params) => handleParameterUpdate(provider, preference.modelName, params)}
+                            onResetToDefaults={() => {
+                              const defaultParams = modelService.getDefaultParameters(provider)
+                              handleParameterUpdate(provider, preference.modelName, defaultParams)
+                            }}
                           />
                         </CardContent>
                       </Card>
@@ -339,9 +531,10 @@ interface ModelParameterEditorProps {
   modelName: string
   parameters: Record<string, any>
   onParametersChange: (parameters: Record<string, any>) => void
+  onResetToDefaults?: () => void
 }
 
-function ModelParameterEditor({ provider, parameters, onParametersChange }: ModelParameterEditorProps) {
+function ModelParameterEditor({ provider, parameters, onParametersChange, onResetToDefaults }: ModelParameterEditorProps) {
   const handleParameterChange = (key: string, value: any) => {
     const newParams = { ...parameters, [key]: value }
     onParametersChange(newParams)
@@ -387,6 +580,20 @@ function ModelParameterEditor({ provider, parameters, onParametersChange }: Mode
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">Model Parameters</h4>
+        {onResetToDefaults && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onResetToDefaults}
+            className="text-xs"
+          >
+            Reset to Defaults
+          </Button>
+        )}
+      </div>
+      
       {allParams.map(param => (
         <div key={param.key} className="space-y-2">
           <div className="flex items-center justify-between">

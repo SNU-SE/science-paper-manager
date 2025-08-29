@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useCallback, memo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AIModel } from '@/types'
-import { useAIStore } from '../../stores'
+import { useAIStore } from '@/stores'
 import { Eye, EyeOff, Key, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 
 const AI_MODELS: { id: AIModel; name: string; description: string }[] = [
@@ -34,7 +34,7 @@ const AI_MODELS: { id: AIModel; name: string; description: string }[] = [
   }
 ]
 
-export function AIModelSelectorEnhanced() {
+const AIModelSelectorEnhanced = memo(() => {
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({})
   const [tempApiKeys, setTempApiKeys] = useState<Record<string, string>>({})
 
@@ -53,11 +53,11 @@ export function AIModelSelectorEnhanced() {
     getActiveModelsWithKeys
   } = useAIStore()
 
-  const handleApiKeyChange = (model: AIModel, key: string) => {
+  const handleApiKeyChange = useCallback((model: AIModel, key: string) => {
     setTempApiKeys(prev => ({ ...prev, [model]: key }))
-  }
+  }, [])
 
-  const handleApiKeySave = async (model: AIModel) => {
+  const handleApiKeySave = useCallback(async (model: AIModel) => {
     const key = tempApiKeys[model]
     if (!key) return
 
@@ -72,36 +72,41 @@ export function AIModelSelectorEnhanced() {
       })
       setShowApiKeys(prev => ({ ...prev, [model]: false }))
     }
-  }
+  }, [tempApiKeys, updateApiKey, validateApiKey])
 
-  const handleApiKeyRemove = (model: AIModel) => {
+  const handleApiKeyRemove = useCallback((model: AIModel) => {
     removeApiKey(model)
     setTempApiKeys(prev => {
       const newKeys = { ...prev }
       delete newKeys[model]
       return newKeys
     })
-  }
+  }, [removeApiKey])
 
-  const toggleApiKeyVisibility = (model: AIModel) => {
+  const toggleApiKeyVisibility = useCallback((model: AIModel) => {
     setShowApiKeys(prev => ({ ...prev, [model]: !prev[model] }))
     if (!showApiKeys[model]) {
       setTempApiKeys(prev => ({ ...prev, [model]: apiKeys[model] || '' }))
     }
-  }
+  }, [showApiKeys, apiKeys])
 
-  const activeModelsWithKeys = getActiveModelsWithKeys()
+  const activeModelsWithKeys = useMemo(() => getActiveModelsWithKeys(), [getActiveModelsWithKeys])
+  
+  const totalUsageCost = useMemo(() => 
+    Object.values(usage).reduce((sum, u) => sum + u.estimatedCost, 0),
+    [usage]
+  )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-labelledby="ai-config-title">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">AI Model Configuration</h3>
-          <p className="text-sm text-gray-600">
+          <h3 id="ai-config-title" className="text-lg font-semibold">AI Model Configuration</h3>
+          <p className="text-sm text-gray-600" id="ai-config-description">
             Configure API keys and select which models to use for analysis
           </p>
         </div>
-        <Badge variant="outline">
+        <Badge variant="outline" aria-label={`${activeModelsWithKeys.length} active models`}>
           {activeModelsWithKeys.length} active
         </Badge>
       </div>
@@ -117,20 +122,20 @@ export function AIModelSelectorEnhanced() {
           const tempKey = tempApiKeys[model.id]
 
           return (
-            <Card key={model.id} className="relative">
+            <Card key={model.id} className="relative" role="article" aria-labelledby={`model-title-${model.id}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <CardTitle className="text-base flex items-center gap-2">
+                    <CardTitle className="text-base flex items-center gap-2" id={`model-title-${model.id}`}>
                       {model.name}
                       {isValid && (
-                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <CheckCircle className="w-4 h-4 text-green-500" aria-label="Valid configuration" />
                       )}
                       {hasError && (
-                        <XCircle className="w-4 h-4 text-red-500" />
+                        <XCircle className="w-4 h-4 text-red-500" aria-label="Configuration error" />
                       )}
                     </CardTitle>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-600 mt-1" id={`model-desc-${model.id}`}>
                       {model.description}
                     </p>
                   </div>
@@ -139,11 +144,16 @@ export function AIModelSelectorEnhanced() {
                       checked={isActive}
                       onCheckedChange={() => toggleModel(model.id)}
                       disabled={!isValid}
+                      aria-label={`Enable ${model.name} model`}
+                      aria-describedby={`model-desc-${model.id}`}
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => toggleApiKeyVisibility(model.id)}
+                      aria-label={isShowingKey ? `Hide ${model.name} API key` : `Show ${model.name} API key`}
+                      aria-expanded={isShowingKey}
+                      aria-controls={`api-key-section-${model.id}`}
                     >
                       {isShowingKey ? (
                         <EyeOff className="w-4 h-4" />
@@ -158,8 +168,8 @@ export function AIModelSelectorEnhanced() {
               <CardContent className="space-y-4">
                 {/* API Key Management */}
                 {isShowingKey && (
-                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
-                    <Label htmlFor={`${model.id}-key`} className="text-sm font-medium">
+                  <div className="space-y-3 p-3 bg-gray-50 rounded-lg" id={`api-key-section-${model.id}`} role="group" aria-labelledby={`${model.id}-key-label`}>
+                    <Label htmlFor={`${model.id}-key`} className="text-sm font-medium" id={`${model.id}-key-label`}>
                       API Key
                     </Label>
                     <div className="flex gap-2">
@@ -170,30 +180,37 @@ export function AIModelSelectorEnhanced() {
                         value={tempKey || ''}
                         onChange={(e) => handleApiKeyChange(model.id, e.target.value)}
                         className={hasError ? 'border-red-300' : ''}
+                        aria-describedby={hasError ? `${model.id}-error` : undefined}
+                        aria-invalid={hasError}
                       />
                       <Button
                         size="sm"
                         onClick={() => handleApiKeySave(model.id)}
                         disabled={!tempKey || isValidating}
+                        aria-label={`Save ${model.name} API key`}
                       >
                         {isValidating ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                         ) : (
-                          <Key className="w-4 h-4" />
+                          <Key className="w-4 h-4" aria-hidden="true" />
                         )}
+                        <span className="sr-only">
+                          {isValidating ? 'Validating...' : 'Save API key'}
+                        </span>
                       </Button>
                       {hasKey && (
                         <Button
                           variant="destructive"
                           size="sm"
                           onClick={() => handleApiKeyRemove(model.id)}
+                          aria-label={`Remove ${model.name} API key`}
                         >
                           Remove
                         </Button>
                       )}
                     </div>
                     {hasError && (
-                      <p className="text-sm text-red-600">
+                      <p className="text-sm text-red-600" id={`${model.id}-error`} role="alert">
                         {validationErrors[model.id]}
                       </p>
                     )}
@@ -249,7 +266,7 @@ export function AIModelSelectorEnhanced() {
             <div>
               <div className="text-gray-600">Total Usage</div>
               <div className="font-medium">
-                ${Object.values(usage).reduce((sum, u) => sum + u.estimatedCost, 0).toFixed(4)}
+                ${totalUsageCost.toFixed(4)}
               </div>
             </div>
           </div>
@@ -265,4 +282,8 @@ export function AIModelSelectorEnhanced() {
       </Card>
     </div>
   )
-}
+})
+
+AIModelSelectorEnhanced.displayName = 'AIModelSelectorEnhanced'
+
+export { AIModelSelectorEnhanced }

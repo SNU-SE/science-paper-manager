@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,16 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, CheckCircle, XCircle, ExternalLink, RefreshCw, Activity } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, ExternalLink, RefreshCw, Activity, AlertTriangle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { UserZoteroService, ZoteroConfig as ZoteroConfigType, ZoteroSettingsInfo } from '@/services/settings/UserZoteroService'
+import { useSettingsValidation, useSettingsSave } from '@/hooks/useSettingsValidation'
+import { SettingsValidationFeedback } from '@/components/settings/SettingsValidationFeedback'
 
 interface ZoteroConfigProps {
   onConfigured?: (settings: ZoteroSettingsInfo) => void
 }
 
-export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
+const ZoteroConfig = memo(({ onConfigured }: ZoteroConfigProps) => {
   const [config, setConfig] = useState<ZoteroConfigType>({
     apiKey: '',
     userIdZotero: '',
@@ -30,12 +32,15 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
   const [settings, setSettings] = useState<ZoteroSettingsInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [libraryInfo, setLibraryInfo] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const { user } = useAuth()
   const zoteroService = new UserZoteroService()
+  
+  // Enhanced validation and error handling
+  const { validateSetting, validationState, retryValidation, clearValidation, isRetryable } = useSettingsValidation()
+  const { saveSettings, saveState } = useSettingsSave()
 
   useEffect(() => {
     if (user) {
@@ -43,7 +48,7 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
     }
   }, [user])
 
-  const loadZoteroSettings = async () => {
+  const loadZoteroSettings = useCallback(async () => {
     if (!user) return
     
     try {
@@ -77,98 +82,211 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user, zoteroService, toast, onConfigured])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !config.apiKey.trim()) return
     
-    setIsSaving(true)
     setError(null)
+    
+    // Create save operation function
+    const saveZoteroConfig = async () => {
+      // Validate form data
+      if (!config.userIdZotero.trim()) {
+        throw new Error('User ID is required')
+      }
+      
+      if (!/^\d+$/.test(config.userIdZotero.trim())) {
+        throw new Error('User ID must be a numeric value')
+      }
+      
+      if (config.apiKey.length < 32) {
+        throw new Error('API key must be at least 32 characters long')
+      }
+      
+      if (config.libraryType === 'group' && !config.libraryId?.trim()) {
+        throw new Error('Group Library ID is required for group libraries')
+      }
+      
+      if (config.libraryType === 'group' && config.libraryId && !/^\d+$/.test(config.libraryId.trim())) {
+        throw new Error('Group Library ID must be a numeric value')
+      }
 
-    try {
-      const savedSettings = await zoteroService.saveZoteroSettings(user.id, config)
-      setSettings(savedSettings)
+      // First test the connection before saving
+      const testConfig = {
+        ...config,
+        userIdZotero: config.userIdZotero.trim(),
+        libraryId: config.libraryId?.trim() || null
+      }
+      
+      // Test API key validity by making a simple request
+      const baseUrl = testConfig.libraryType === 'group' && testConfig.libraryId
+        ? `https://api.zotero.org/groups/${testConfig.libraryId}`
+        : `https://api.zotero.org/users/${testConfig.userIdZotero}`
+
+      const testResponse = await fetch(`${baseUrl}/items?limit=1`, {
+        headers: {
+          'Zotero-API-Key': testConfig.apiKey,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!testResponse.ok) {
+        if (testResponse.status === 403) {
+          throw new Error('Invalid API key or insufficient permissions')
+        } else if (testResponse.status === 404) {
+          throw new Error('User ID or Library ID not found')
+        } else if (testResponse.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait before trying again.')
+        } else {
+          throw new Error(`API validation failed (${testResponse.status}): ${testResponse.statusText}`)
+        }
+      }
+      
+      // Save the settings
+      const savedSettings = await zoteroService.saveZoteroSettings(user.id, testConfig)
       
       // Load library info
       const info = await zoteroService.getZoteroLibraryInfo(user.id)
       setLibraryInfo(info)
       
-      toast({
-        title: 'Success',
-        description: 'Zotero configured successfully'
-      })
-      onConfigured?.(savedSettings)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to configure Zotero'
-      setError(errorMessage)
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive'
-      })
-    } finally {
-      setIsSaving(false)
+      return savedSettings
     }
+
+    // Use enhanced save with retry capability
+    const result = await saveSettings(
+      saveZoteroConfig,
+      { provider: 'Zotero', operation: 'save' },
+      {
+        showToast: true,
+        onSuccess: (savedSettings) => {
+          setSettings(savedSettings)
+          setError(null)
+          onConfigured?.(savedSettings)
+        },
+        onError: (error) => {
+          setError(error.message)
+        }
+      }
+    )
   }
 
   const handleDisconnect = async () => {
     if (!user) return
     
-    setIsSaving(true)
-    
-    try {
+    const disconnectZotero = async () => {
       await zoteroService.deleteZoteroSettings(user.id)
-      setSettings(null)
-      setLibraryInfo(null)
-      setConfig({
-        apiKey: '',
-        userIdZotero: '',
-        libraryType: 'user',
-        libraryId: '',
-        autoSync: false,
-        syncInterval: 3600
-      })
-      
-      toast({
-        title: 'Success',
-        description: 'Zotero disconnected successfully'
-      })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to disconnect Zotero',
-        variant: 'destructive'
-      })
-    } finally {
-      setIsSaving(false)
+      return true
     }
+
+    const result = await saveSettings(
+      disconnectZotero,
+      { provider: 'Zotero', operation: 'disconnect' },
+      {
+        showToast: true,
+        onSuccess: () => {
+          setSettings(null)
+          setLibraryInfo(null)
+          setConfig({
+            apiKey: '',
+            userIdZotero: '',
+            libraryType: 'user',
+            libraryId: '',
+            autoSync: false,
+            syncInterval: 3600
+          })
+          clearValidation()
+          setError(null)
+        }
+      }
+    )
   }
   
   const handleTestConnection = async () => {
     if (!user) return
     
-    setIsTestingConnection(true)
+    // Clear previous errors
+    setError(null)
+    clearValidation()
     
-    try {
-      const isConnected = await zoteroService.testZoteroConnection(user.id)
+    // Create test function for validation
+    const testZoteroConnection = async (): Promise<boolean> => {
+      // Validate form data
+      if (!config.userIdZotero.trim()) {
+        throw new Error('User ID is required')
+      }
       
-      toast({
-        title: isConnected ? 'Connection Successful' : 'Connection Failed',
-        description: isConnected 
-          ? 'Your Zotero API connection is working correctly' 
-          : 'Unable to connect to your Zotero library. Please check your settings.',
-        variant: isConnected ? 'default' : 'destructive'
+      if (!/^\d+$/.test(config.userIdZotero.trim())) {
+        throw new Error('User ID must be a numeric value')
+      }
+      
+      if (!config.apiKey.trim()) {
+        throw new Error('API key is required')
+      }
+      
+      if (config.apiKey.length < 32) {
+        throw new Error('API key must be at least 32 characters long')
+      }
+      
+      if (config.libraryType === 'group' && !config.libraryId?.trim()) {
+        throw new Error('Group Library ID is required for group libraries')
+      }
+      
+      if (config.libraryType === 'group' && config.libraryId && !/^\d+$/.test(config.libraryId.trim())) {
+        throw new Error('Group Library ID must be a numeric value')
+      }
+      
+      // Test connection with current form data
+      const testConfig = {
+        ...config,
+        userIdZotero: config.userIdZotero.trim(),
+        libraryId: config.libraryId?.trim() || null
+      }
+      
+      const baseUrl = testConfig.libraryType === 'group' && testConfig.libraryId
+        ? `https://api.zotero.org/groups/${testConfig.libraryId}`
+        : `https://api.zotero.org/users/${testConfig.userIdZotero}`
+
+      const response = await fetch(`${baseUrl}/items?limit=1`, {
+        headers: {
+          'Zotero-API-Key': testConfig.apiKey,
+          'Content-Type': 'application/json'
+        }
       })
-    } catch (error) {
-      toast({
-        title: 'Connection Test Failed',
-        description: 'Failed to test Zotero connection',
-        variant: 'destructive'
-      })
-    } finally {
-      setIsTestingConnection(false)
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('Invalid API key or insufficient permissions')
+        } else if (response.status === 404) {
+          throw new Error('User ID or Library ID not found')
+        } else if (response.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait before trying again.')
+        } else {
+          throw new Error(`API error (${response.status}): ${response.statusText}`)
+        }
+      }
+      
+      return true
     }
+
+    // Use enhanced validation with retry capability
+    await validateSetting(
+      testZoteroConnection,
+      { provider: 'Zotero', field: 'connection' },
+      {
+        showToast: true,
+        autoRetry: true,
+        maxRetries: 2,
+        retryDelay: 2000,
+        onSuccess: () => {
+          setError(null)
+        },
+        onError: (error) => {
+          setError(error.message)
+        }
+      }
+    )
   }
   
   const handleSyncSettingsUpdate = async (autoSync: boolean, syncInterval?: number) => {
@@ -251,14 +369,24 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
         </CardTitle>
         <CardDescription>
           Connect your Zotero library to sync papers and metadata automatically.
-          <a 
-            href="https://www.zotero.org/settings/keys" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 ml-2 text-blue-600 hover:text-blue-800"
-          >
-            Get API Key <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a 
+              href="https://www.zotero.org/settings/keys" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
+            >
+              Get API Key <ExternalLink className="h-3 w-3" />
+            </a>
+            <a 
+              href="https://www.zotero.org/settings/account" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
+            >
+              Find User ID <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -266,6 +394,18 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
           <Alert className="mb-4" variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        )}
+
+        {/* Enhanced validation feedback */}
+        {(validationState.error || validationState.isValidating || validationState.isValid !== null) && (
+          <div className="mb-4">
+            <SettingsValidationFeedback
+              validationState={validationState}
+              onRetry={retryValidation}
+              showRetryButton={true}
+              showLastValidated={true}
+            />
+          </div>
         )}
 
         {settings ? (
@@ -290,9 +430,9 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
                   onClick={handleTestConnection}
                   variant="outline"
                   size="sm"
-                  disabled={isTestingConnection}
+                  disabled={validationState.isValidating}
                 >
-                  {isTestingConnection ? (
+                  {validationState.isValidating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>Test Connection</>
@@ -303,19 +443,19 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
             
             {libraryInfo && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold">{libraryInfo.totalItems}</div>
-                  <div className="text-sm text-gray-600">Total Items</div>
+                <div className="text-center p-4 border rounded-lg bg-blue-50 border-blue-200">
+                  <div className="text-2xl font-bold text-blue-700">{libraryInfo.totalItems}</div>
+                  <div className="text-sm text-blue-600">Total Items</div>
                 </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold">{libraryInfo.collections}</div>
-                  <div className="text-sm text-gray-600">Collections</div>
+                <div className="text-center p-4 border rounded-lg bg-green-50 border-green-200">
+                  <div className="text-2xl font-bold text-green-700">{libraryInfo.collections}</div>
+                  <div className="text-sm text-green-600">Collections</div>
                 </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold">
+                <div className="text-center p-4 border rounded-lg bg-purple-50 border-purple-200">
+                  <div className="text-2xl font-bold text-purple-700">
                     {libraryInfo.lastModified ? '✓' : '—'}
                   </div>
-                  <div className="text-sm text-gray-600">Last Modified</div>
+                  <div className="text-sm text-purple-600">Connected</div>
                 </div>
               </div>
             )}
@@ -372,9 +512,9 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
               <Button 
                 onClick={handleDisconnect} 
                 variant="outline"
-                disabled={isSaving}
+                disabled={saveState.isSaving}
               >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saveState.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Disconnect
               </Button>
             </div>
@@ -386,13 +526,15 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
               <Input
                 id="userIdZotero"
                 type="text"
-                placeholder="Your Zotero User ID"
+                placeholder="Your Zotero User ID (e.g., 123456)"
                 value={config.userIdZotero}
-                onChange={(e) => setConfig(prev => ({ ...prev, userIdZotero: e.target.value }))}
+                onChange={(e) => setConfig(prev => ({ ...prev, userIdZotero: e.target.value.trim() }))}
                 required
+                pattern="[0-9]+"
+                title="User ID should contain only numbers"
               />
               <p className="text-sm text-gray-500">
-                Find your User ID in your Zotero account settings
+                Find your User ID in your Zotero account settings. It's a numeric ID like 123456.
               </p>
             </div>
 
@@ -403,11 +545,13 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
                 type="password"
                 placeholder="Your Zotero API Key"
                 value={config.apiKey}
-                onChange={(e) => setConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                onChange={(e) => setConfig(prev => ({ ...prev, apiKey: e.target.value.trim() }))}
                 required
+                minLength={32}
+                title="API key should be at least 32 characters long"
               />
               <p className="text-sm text-gray-500">
-                Create a new API key with library read permissions
+                Create a new API key with library read permissions. The key should be at least 32 characters long.
               </p>
             </div>
 
@@ -435,10 +579,16 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
                 <Input
                   id="libraryId"
                   type="text"
-                  placeholder="Group Library ID"
+                  placeholder="Group Library ID (e.g., 123456)"
                   value={config.libraryId}
-                  onChange={(e) => setConfig(prev => ({ ...prev, libraryId: e.target.value }))}
+                  onChange={(e) => setConfig(prev => ({ ...prev, libraryId: e.target.value.trim() }))}
+                  required={config.libraryType === 'group'}
+                  pattern="[0-9]+"
+                  title="Group Library ID should contain only numbers"
                 />
+                <p className="text-sm text-gray-500">
+                  Find the Group Library ID in your Zotero group settings. It's a numeric ID.
+                </p>
               </div>
             )}
 
@@ -470,13 +620,53 @@ export function ZoteroConfig({ onConfigured }: ZoteroConfigProps) {
               )}
             </div>
             
-            <Button type="submit" disabled={isSaving || !config.apiKey.trim()} className="w-full">
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Connect Zotero
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleTestConnection}
+                disabled={validationState.isValidating || saveState.isSaving || !config.apiKey.trim() || !config.userIdZotero.trim()}
+                className="flex-1"
+              >
+                {validationState.isValidating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <>Test Connection</>
+                )}
+              </Button>
+              
+              <Button 
+                type="submit" 
+                disabled={validationState.isValidating || saveState.isSaving || !config.apiKey.trim() || !config.userIdZotero.trim()} 
+                className="flex-1"
+              >
+                {saveState.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Connect Zotero
+              </Button>
+            </div>
+            
+            {/* Help Section */}
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="font-medium">Setup Instructions:</p>
+                  <ol className="text-sm space-y-1 ml-4 list-decimal">
+                    <li>Go to <a href="https://www.zotero.org/settings/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Zotero API Keys</a> and create a new key</li>
+                    <li>Grant "Allow library access" permission (read access is sufficient)</li>
+                    <li>Find your User ID in <a href="https://www.zotero.org/settings/account" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Account Settings</a></li>
+                    <li>Test the connection before saving to ensure everything works</li>
+                  </ol>
+                </div>
+              </AlertDescription>
+            </Alert>
           </form>
         )}
       </CardContent>
     </Card>
   )
-}
+})
+
+ZoteroConfig.displayName = 'ZoteroConfig'
+
+export { ZoteroConfig }

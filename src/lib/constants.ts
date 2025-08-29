@@ -85,7 +85,20 @@ export const ERROR_MESSAGES = {
   ANALYSIS_FAILED: 'Failed to analyze paper',
   SEARCH_FAILED: 'Search request failed',
   NETWORK_ERROR: 'Network connection error',
-  UNKNOWN_ERROR: 'An unexpected error occurred'
+  UNKNOWN_ERROR: 'An unexpected error occurred',
+  
+  // Settings-specific error messages
+  API_KEY_EXPIRED: 'API key has expired',
+  API_KEY_INSUFFICIENT_PERMISSIONS: 'API key lacks required permissions',
+  API_KEY_RATE_LIMITED: 'Rate limit exceeded',
+  API_KEY_MALFORMED: 'API key format is invalid',
+  NETWORK_TIMEOUT: 'Request timed out',
+  NETWORK_OFFLINE: 'No internet connection',
+  VALIDATION_REQUIRED: 'This field is required',
+  VALIDATION_INVALID_FORMAT: 'Invalid format',
+  SAVE_PERMISSION_DENIED: 'Permission denied',
+  SAVE_QUOTA_EXCEEDED: 'Storage quota exceeded',
+  SERVICE_UNAVAILABLE: 'Service is currently unavailable'
 } as const
 
 // Success Messages

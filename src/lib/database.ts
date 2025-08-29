@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import * as React from 'react'
 
 // Database configuration
 export const supabaseConfig = {
@@ -239,6 +240,34 @@ export interface Database {
           created_at: string
           updated_at: string
         }
+        Insert: {
+          id?: string
+          user_id: string
+          client_id: string
+          client_secret: string
+          redirect_uri: string
+          refresh_token?: string | null
+          access_token?: string | null
+          token_expiry?: string | null
+          root_folder_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          client_id?: string
+          client_secret?: string
+          redirect_uri?: string
+          refresh_token?: string | null
+          access_token?: string | null
+          token_expiry?: string | null
+          root_folder_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
       }
       user_api_keys: {
         Row: {
@@ -359,34 +388,6 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
-        Insert: {
-          id?: string
-          user_id: string
-          client_id: string
-          client_secret: string
-          redirect_uri: string
-          refresh_token?: string | null
-          access_token?: string | null
-          token_expiry?: string | null
-          root_folder_id?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          client_id?: string
-          client_secret?: string
-          redirect_uri?: string
-          refresh_token?: string | null
-          access_token?: string | null
-          token_expiry?: string | null
-          root_folder_id?: string | null
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
       }
     }
     Functions: {
@@ -441,3 +442,203 @@ export type UserZoteroSettingsInsert = Database['public']['Tables']['user_zotero
 export type UserZoteroSettingsUpdate = Database['public']['Tables']['user_zotero_settings']['Update']
 
 export type MatchDocumentsResult = Database['public']['Functions']['match_documents']['Returns'][0]
+
+// Navigation related types
+export interface NavigationState {
+  currentPath: string
+  isAuthenticated: boolean
+  userRole?: string
+}
+
+export interface NavigationItem {
+  href: string
+  label: string
+  icon: React.ComponentType
+  requiresAuth?: boolean
+}
+
+// Settings Backup related types
+export interface BackupMetadata {
+  version: string
+  createdAt: string
+  userId: string
+  settingsCount: number
+  encrypted: boolean
+}
+
+export interface SettingsBackupData {
+  aiModels?: Array<{
+    provider: string
+    model_name: string
+    is_default: boolean
+    parameters: any
+    is_enabled: boolean
+  }>
+  apiKeys?: Array<{
+    provider: string
+    is_valid: boolean
+    usage_count: number
+    has_key: boolean
+  }>
+  googleDrive?: {
+    client_id: string
+    redirect_uri: string
+    root_folder_id: string | null
+    is_active: boolean
+  }
+  zotero?: {
+    user_id_zotero: string
+    library_type: string
+    library_id: string | null
+    auto_sync: boolean
+    sync_interval: number
+    is_active: boolean
+  }
+}
+
+export interface BackupFile {
+  metadata: BackupMetadata
+  data: SettingsBackupData
+  checksum: string
+}
+
+export interface ExportOptions {
+  includeApiKeys: boolean
+  includeGoogleDrive: boolean
+  includeZotero: boolean
+  includeAiModels: boolean
+  encryptData: boolean
+  password?: string
+}
+
+export interface RestoreOptions {
+  overwriteExisting: boolean
+  selectiveRestore: {
+    aiModels: boolean
+    apiKeys: boolean
+    googleDrive: boolean
+    zotero: boolean
+  }
+  validateBeforeRestore: boolean
+  password?: string
+}
+
+export interface RestoreResult {
+  success: boolean
+  restored: {
+    aiModels: number
+    apiKeys: number
+    googleDrive: boolean
+    zotero: boolean
+  }
+  errors: string[]
+  warnings: string[]
+}
+
+// Enhanced service interfaces
+export interface ModelPreference {
+  id: string
+  provider: AIProvider
+  modelName: string
+  displayName: string
+  isDefault: boolean
+  parameters: Record<string, any>
+  isEnabled: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface APIKeyInfo {
+  id: string
+  provider: AIProvider
+  isValid: boolean
+  lastValidatedAt: Date | null
+  usageCount: number
+  hasKey: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ZoteroSettingsInfo {
+  id: string
+  userIdZotero: string
+  libraryType: 'user' | 'group'
+  libraryId: string | null
+  autoSync: boolean
+  syncInterval: number
+  lastSyncAt: Date | null
+  syncStatus: 'inactive' | 'syncing' | 'completed' | 'failed'
+  isActive: boolean
+  hasApiKey: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface GoogleDriveSettingsInfo {
+  id: string
+  clientId: string
+  redirectUri: string
+  refreshToken: string | null
+  accessToken: string | null
+  tokenExpiry: Date | null
+  rootFolderId: string | null
+  isActive: boolean
+  hasCredentials: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// AI Provider type
+export type AIProvider = 'openai' | 'anthropic' | 'xai' | 'gemini'
+
+// Settings validation types
+export interface ValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export interface SettingsValidationContext {
+  userId: string
+  provider?: AIProvider
+  settingType: 'api_key' | 'ai_model' | 'zotero' | 'google_drive'
+}
+
+// Error handling types for settings
+export interface SettingsError {
+  type: 'validation' | 'network' | 'authentication' | 'encryption' | 'database'
+  message: string
+  details?: Record<string, any>
+  context?: SettingsValidationContext
+  timestamp: Date
+}
+
+// Backup/restore operation types
+export interface BackupOperation {
+  id: string
+  userId: string
+  operation: 'export' | 'import'
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  options: ExportOptions
+  filePath?: string
+  errorMessage?: string
+  createdAt: Date
+  completedAt?: Date
+}
+
+// Settings synchronization types
+export interface SettingsSyncStatus {
+  lastSyncAt: Date | null
+  syncInProgress: boolean
+  pendingChanges: number
+  lastError?: SettingsError
+}
+
+// User preferences aggregation type
+export interface UserPreferences {
+  aiModels: ModelPreference[]
+  apiKeys: APIKeyInfo[]
+  zotero: ZoteroSettingsInfo | null
+  googleDrive: GoogleDriveSettingsInfo | null
+  syncStatus: SettingsSyncStatus
+}

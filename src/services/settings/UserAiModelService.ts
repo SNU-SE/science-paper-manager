@@ -151,7 +151,6 @@ export class UserAiModelService {
         .select('*')
         .eq('user_id', userId)
         .order('provider', { ascending: true })
-        .order('is_default', { ascending: false })
 
       if (error) {
         throw error

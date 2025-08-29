@@ -1,4 +1,5 @@
 // Core data types for the Science Paper Manager
+import * as React from 'react'
 
 export interface Paper {
   id: string
@@ -108,3 +109,160 @@ export interface AppError {
   details?: Record<string, unknown>
   timestamp: Date
 }
+
+// Settings-related types
+export interface SettingsFormData {
+  provider: string
+  apiKey?: string
+  modelName?: string
+  parameters?: Record<string, any>
+  isDefault?: boolean
+  isEnabled?: boolean
+}
+
+export interface SettingsFormErrors {
+  [key: string]: string | undefined
+}
+
+export interface SettingsFormState {
+  data: SettingsFormData
+  errors: SettingsFormErrors
+  isSubmitting: boolean
+  isDirty: boolean
+}
+
+// Navigation types
+export interface BreadcrumbItem {
+  label: string
+  href?: string
+  isActive?: boolean
+}
+
+export interface NavigationConfig {
+  items: NavigationItem[]
+  userMenuItems: NavigationItem[]
+  breadcrumbs?: BreadcrumbItem[]
+}
+
+export interface NavigationItem {
+  href: string
+  label: string
+  icon?: React.ComponentType<{ className?: string }>
+  requiresAuth?: boolean
+  badge?: string | number
+  children?: NavigationItem[]
+}
+
+// Settings backup/restore types
+export interface BackupMetadata {
+  version: string
+  createdAt: Date
+  userId: string
+  settingsCount: number
+  checksum: string
+}
+
+export interface RestoreOptions {
+  overwriteExisting: boolean
+  selectiveRestore: {
+    aiModels: boolean
+    apiKeys: boolean
+    googleDrive: boolean
+    zotero: boolean
+  }
+  validateBeforeRestore: boolean
+}
+
+export interface RestoreResult {
+  success: boolean
+  restored: {
+    aiModels: number
+    apiKeys: number
+    googleDrive: boolean
+    zotero: boolean
+  }
+  errors: string[]
+  warnings: string[]
+}
+
+// Component prop types for settings
+export interface SettingsTabProps {
+  userId: string
+  onSettingsChange?: (settings: any) => void
+  onError?: (error: AppError) => void
+}
+
+export interface SettingsValidationProps {
+  value: any
+  rules: ValidationRule[]
+  onValidation?: (result: ValidationResult) => void
+}
+
+export interface ValidationRule {
+  type: 'required' | 'minLength' | 'maxLength' | 'pattern' | 'custom'
+  value?: any
+  message: string
+  validator?: (value: any) => boolean
+}
+
+export interface ValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+// Performance monitoring types for settings
+export interface SettingsPerformanceMetrics {
+  loadTime: number
+  saveTime: number
+  validationTime: number
+  renderTime: number
+  errorCount: number
+  lastUpdated: Date
+}
+
+// Accessibility types
+export interface AccessibilityConfig {
+  announceChanges: boolean
+  keyboardNavigation: boolean
+  screenReaderSupport: boolean
+  highContrast: boolean
+  reducedMotion: boolean
+}
+
+// Theme and UI preferences
+export interface UIPreferences {
+  theme: 'light' | 'dark' | 'system'
+  compactMode: boolean
+  showAdvancedOptions: boolean
+  autoSave: boolean
+  confirmBeforeDelete: boolean
+  accessibility: AccessibilityConfig
+}
+
+// Re-export types from specialized modules
+export * from './settings'
+export * from './navigation'
+// Selective re-export from services to avoid conflicts
+export type {
+  IUserAiModelService,
+  IUserApiKeyService,
+  IUserZoteroService,
+  IUserGoogleDriveService,
+  ISettingsBackupService,
+  IServiceFactory,
+  ServiceConfig,
+  ServiceError,
+  ServiceResponse,
+  ModelUsageStats,
+  KeyUsageHistory,
+  KeyTestConfig,
+  KeyTestResult,
+  ZoteroSyncStatus,
+  ZoteroLibraryInfo,
+  ZoteroSyncHistory,
+  ZoteroCollection,
+  GoogleDriveQuota,
+  GoogleDriveFolder,
+  BackupHistoryEntry
+} from './services'

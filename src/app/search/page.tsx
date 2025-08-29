@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Settings, Database, AlertCircle, CheckCircle } from 'lucide-react'
 import { SemanticSearch, SearchResults } from '@/components/search'
 import { useVectorService } from '@/hooks/useVectorService'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import type { SearchFilters } from '@/types'
 
 export default function SearchPage() {
@@ -125,8 +125,9 @@ export default function SearchPage() {
 
   if (showApiKeyPrompt) {
     return (
-      <DashboardLayout>
-        <div className="max-w-md mx-auto">
+      <ProtectedRoute>
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -180,14 +181,16 @@ export default function SearchPage() {
               </p>
             </CardContent>
           </Card>
+          </div>
         </div>
-      </DashboardLayout>
+      </ProtectedRoute>
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <ProtectedRoute>
+      <div className="container mx-auto px-4 py-8">
+        <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -317,7 +320,8 @@ export default function SearchPage() {
           </CardContent>
         </Card>
       )}
+        </div>
       </div>
-    </DashboardLayout>
+    </ProtectedRoute>
   )
 }

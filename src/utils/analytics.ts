@@ -240,11 +240,11 @@ export function withAnalytics<P extends object>(
   pageName?: string
 ) {
   return function AnalyticsWrapper(props: P) {
-    if (typeof window !== 'undefined') {
-      React.useEffect(() => {
+    React.useEffect(() => {
+      if (typeof window !== 'undefined') {
         analytics.trackPageView(window.location.href, pageName)
-      }, [])
-    }
+      }
+    }, [pageName])
 
     return React.createElement(WrappedComponent, props)
   }

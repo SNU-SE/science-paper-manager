@@ -1,7 +1,6 @@
 'use client'
 
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { 
   DashboardStats, 
   RecentActivity, 
@@ -36,7 +35,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <ProtectedRoute>
-        <DashboardLayout>
+        <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <p className="text-red-600 mb-4">{error}</p>
@@ -46,14 +45,14 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-        </DashboardLayout>
+        </div>
       </ProtectedRoute>
     )
   }
 
   return (
     <ProtectedRoute>
-      <DashboardLayout>
+      <div className="container mx-auto px-4 py-8">
         <div className="space-y-8">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -106,7 +105,7 @@ export default function DashboardPage() {
             isLoading={isLoading}
           />
         </div>
-      </DashboardLayout>
+      </div>
     </ProtectedRoute>
   )
 }

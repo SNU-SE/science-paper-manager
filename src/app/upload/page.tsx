@@ -1,7 +1,6 @@
 'use client'
 
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { PaperUpload } from '@/components/papers/PaperUpload'
 import { PaperUploadService } from '@/services/upload/PaperUploadService'
 import { Paper } from '@/types'
@@ -27,7 +26,7 @@ export default function UploadPage() {
 
   return (
     <ProtectedRoute>
-      <DashboardLayout>
+      <div className="container mx-auto px-4 py-8">
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold mb-2">Upload Papers</h1>
@@ -43,7 +42,7 @@ export default function UploadPage() {
             className="max-w-4xl"
           />
         </div>
-      </DashboardLayout>
+      </div>
     </ProtectedRoute>
   )
 }

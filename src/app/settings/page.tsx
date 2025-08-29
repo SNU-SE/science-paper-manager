@@ -1,29 +1,63 @@
 'use client'
 
 import { useState } from 'react'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { AuthenticationVerifier } from '@/components/auth/AuthenticationVerifier'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ZoteroManager } from '@/components/zotero'
 import { APIKeyManager } from '@/components/ai/APIKeyManager'
 import { AIModelSelector } from '@/components/ai/AIModelSelector'
 import { GoogleDriveSettings } from '@/components/settings/GoogleDriveSettings'
-import { Bot, Key, Cloud, BookOpen } from 'lucide-react'
+import { SettingsBackup } from '@/components/settings/SettingsBackup'
+import { useAuthenticationSecurity } from '@/hooks/useAuthenticationSecurity'
+import { useAuth } from '@/components/auth/AuthProvider'
+import { Bot, Key, Cloud, BookOpen, Shield, AlertTriangle, Download } from 'lucide-react'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('ai-config')
+  const { isAuthenticated, isSessionValid, error, verifyUserSession } = useAuthenticationSecurity()
+  const { user } = useAuth()
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="text-gray-600 mt-2">
-            Configure your integrations, AI models, and preferences
-          </p>
-        </div>
+    <ProtectedRoute>
+      <AuthenticationVerifier requireAuth={true}>
+        <div className="container mx-auto py-8 px-4">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <Shield className="h-8 w-8 text-blue-600" />
+                <div>
+                  <h1 className="text-3xl font-bold">Settings</h1>
+                  <p className="text-gray-600 mt-2">
+                    Configure your integrations, AI models, and preferences
+                  </p>
+                </div>
+              </div>
+              
+              {/* Security Status Indicator */}
+              {isAuthenticated && isSessionValid && (
+                <Alert className="mb-6 border-green-200 bg-green-50">
+                  <Shield className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    Your session is secure and authenticated. All settings are encrypted and protected by Row Level Security.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {error && (
+                <Alert variant="destructive" className="mb-6">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Security Warning: {error}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="ai-config" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
               AI Configuration
@@ -39,6 +73,10 @@ export default function SettingsPage() {
             <TabsTrigger value="reference-manager" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
               Reference Manager
+            </TabsTrigger>
+            <TabsTrigger value="backup-restore" className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Backup & Restore
             </TabsTrigger>
           </TabsList>
 
@@ -110,9 +148,38 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <TabsContent value="backup-restore" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Download className="h-5 w-5" />
+                    Backup & Restore
+                  </CardTitle>
+                  <CardDescription>
+                    Export your settings to a secure backup file or restore settings from a previous backup. Keep your configurations safe and portable.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {user?.id ? (
+                    <SettingsBackup 
+                      userId={user.id} 
+                      onSuccess={(message) => console.log('Backup success:', message)}
+                      onError={(error) => console.error('Backup error:', error)}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Please sign in to access backup and restore features.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
           </div>
         </Tabs>
-      </div>
-    </div>
+          </div>
+        </div>
+      </AuthenticationVerifier>
+    </ProtectedRoute>
   )
 }

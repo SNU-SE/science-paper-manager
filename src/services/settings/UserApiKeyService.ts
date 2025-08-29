@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '@/lib/database'
 import { UserApiKey, UserApiKeyInsert, UserApiKeyUpdate } from '@/lib/database'
+import { validateUserId, logSecurityEvent, handleAuthError } from '@/lib/auth-helpers'
 import CryptoJS from 'crypto-js'
 
 export type AIProvider = 'openai' | 'anthropic' | 'xai' | 'gemini'
@@ -51,6 +52,12 @@ export class UserApiKeyService {
    */
   async getUserApiKeys(userId: string): Promise<APIKeyInfo[]> {
     try {
+      // Validate user ID format
+      if (!validateUserId(userId)) {
+        logSecurityEvent('invalid_session', { userId, action: 'getUserApiKeys' })
+        throw new Error('Invalid user ID format')
+      }
+
       const { data, error } = await this.supabase
         .from('user_api_keys')
         .select('*')
@@ -58,6 +65,10 @@ export class UserApiKeyService {
         .order('provider')
 
       if (error) {
+        const authError = handleAuthError(error)
+        if (authError.statusCode === 403 || authError.statusCode === 401) {
+          logSecurityEvent('unauthorized_access', { userId, action: 'getUserApiKeys', error: error.message })
+        }
         throw error
       }
 
@@ -82,6 +93,12 @@ export class UserApiKeyService {
    */
   async getApiKey(userId: string, provider: AIProvider): Promise<string | null> {
     try {
+      // Validate user ID format
+      if (!validateUserId(userId)) {
+        logSecurityEvent('invalid_session', { userId, provider, action: 'getApiKey' })
+        throw new Error('Invalid user ID format')
+      }
+
       const { data, error } = await this.supabase
         .from('user_api_keys')
         .select('api_key_encrypted')
@@ -90,6 +107,10 @@ export class UserApiKeyService {
         .single()
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        const authError = handleAuthError(error)
+        if (authError.statusCode === 403 || authError.statusCode === 401) {
+          logSecurityEvent('unauthorized_access', { userId, provider, action: 'getApiKey', error: error.message })
+        }
         throw error
       }
 
@@ -109,6 +130,17 @@ export class UserApiKeyService {
    */
   async saveApiKey(userId: string, keyData: APIKeyData): Promise<APIKeyInfo> {
     try {
+      // Validate user ID format
+      if (!validateUserId(userId)) {
+        logSecurityEvent('invalid_session', { userId, provider: keyData.provider, action: 'saveApiKey' })
+        throw new Error('Invalid user ID format')
+      }
+
+      // Validate API key format
+      if (!keyData.apiKey || keyData.apiKey.length < 10) {
+        throw new Error('Invalid API key format')
+      }
+
       const encryptedKey = this.encryptApiKey(keyData.apiKey)
       const keyHash = this.createApiKeyHash(keyData.apiKey)
 
@@ -139,7 +171,13 @@ export class UserApiKeyService {
           .select()
           .single()
 
-        if (error) throw error
+        if (error) {
+          const authError = handleAuthError(error)
+          if (authError.statusCode === 403 || authError.statusCode === 401) {
+            logSecurityEvent('unauthorized_access', { userId, provider: keyData.provider, action: 'saveApiKey', error: error.message })
+          }
+          throw error
+        }
         result = data
       } else {
         // Insert new key
@@ -158,7 +196,13 @@ export class UserApiKeyService {
           .select()
           .single()
 
-        if (error) throw error
+        if (error) {
+          const authError = handleAuthError(error)
+          if (authError.statusCode === 403 || authError.statusCode === 401) {
+            logSecurityEvent('unauthorized_access', { userId, provider: keyData.provider, action: 'saveApiKey', error: error.message })
+          }
+          throw error
+        }
         result = data
       }
 
@@ -260,7 +304,7 @@ export class UserApiKeyService {
     }
   }
 
-  // Private methods for testing API keys
+  // Private methods for testing API keys with enhanced error handling
   private async testOpenAIKey(apiKey: string): Promise<boolean> {
     try {
       const response = await fetch('https://api.openai.com/v1/models', {
@@ -269,9 +313,19 @@ export class UserApiKeyService {
           'Content-Type': 'application/json'
         }
       })
-      return response.status === 200
-    } catch {
-      return false
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`OpenAI API error (${response.status}): ${errorText}`)
+      }
+      
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        // Re-throw with more context for better error handling
+        throw new Error(`OpenAI validation failed: ${error.message}`)
+      }
+      throw new Error('OpenAI validation failed: Network error')
     }
   }
 
@@ -290,9 +344,18 @@ export class UserApiKeyService {
           messages: [{ role: 'user', content: 'Hi' }]
         })
       })
-      return response.status === 200
-    } catch {
-      return false
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Anthropic API error (${response.status}): ${errorText}`)
+      }
+      
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Anthropic validation failed: ${error.message}`)
+      }
+      throw new Error('Anthropic validation failed: Network error')
     }
   }
 
@@ -310,18 +373,36 @@ export class UserApiKeyService {
           max_tokens: 10
         })
       })
-      return response.status === 200
-    } catch {
-      return false
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`xAI API error (${response.status}): ${errorText}`)
+      }
+      
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`xAI validation failed: ${error.message}`)
+      }
+      throw new Error('xAI validation failed: Network error')
     }
   }
 
   private async testGeminiKey(apiKey: string): Promise<boolean> {
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-      return response.status === 200
-    } catch {
-      return false
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Gemini API error (${response.status}): ${errorText}`)
+      }
+      
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Gemini validation failed: ${error.message}`)
+      }
+      throw new Error('Gemini validation failed: Network error')
     }
   }
 }

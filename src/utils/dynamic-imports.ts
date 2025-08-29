@@ -1,11 +1,12 @@
 import dynamic from 'next/dynamic'
+import React from 'react'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 
 // Loading component for dynamic imports
-const LoadingComponent = () => (
-  <div className="flex items-center justify-center p-8">
-    <LoadingSpinner size="lg" />
-  </div>
+const LoadingComponent = () => React.createElement(
+  'div',
+  { className: 'flex items-center justify-center p-8' },
+  React.createElement(LoadingSpinner, { size: 'lg' })
 )
 
 // Lazy load heavy components with loading states
