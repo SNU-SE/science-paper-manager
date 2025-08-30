@@ -1,20 +1,17 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useEffect, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { UserAiModelService, ModelPreference, ModelOption } from '@/services/settings/UserAiModelService'
 import { AIProvider } from '@/services/settings/UserApiKeyService'
-import { CheckCircle, XCircle, Loader2, Key, Settings, Sliders } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Settings, Sliders } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { debounce } from '@/utils'
 
@@ -59,7 +56,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         }
         
       } catch (error) {
-        console.error('Error loading model data:', error)
+        // Error loading model data
         toast({
           title: 'Error Loading Models',
           description: 'Failed to load model preferences',
@@ -95,7 +92,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
       onPreferencesUpdate?.(updatedPreferences)
       
     } catch (error) {
-      console.error('Error initializing default models:', error)
+      // Error initializing default models
     }
   }
 
@@ -134,7 +131,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         description: `${modelDisplayName} has been configured for ${getProviderDisplayName(provider)}${isFirstModel ? ' and set as default' : ''}`
       })
     } catch (error) {
-      console.error('Error saving model preference:', error)
+      // Error saving model preference
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast({
         title: 'Configuration Failed',
@@ -174,7 +171,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         description: `${modelDisplayName} is now the default for ${getProviderDisplayName(provider)}`
       })
     } catch (error) {
-      console.error('Error setting default model:', error)
+      // Error setting default model
       toast({
         title: 'Error',
         description: 'Failed to set default model',
@@ -187,7 +184,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
   
   // Debounced parameter update for real-time saving
   const debouncedParameterUpdate = useCallback(
-    debounce(async (provider: AIProvider, modelName: string, parameters: Record<string, any>) => {
+    debounce(async (provider: AIProvider, modelName: string, parameters: Record<string, number | string | boolean>) => {
       if (!user) return
       
       try {
@@ -209,7 +206,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         })
         
       } catch (error) {
-        console.error('Error updating parameters:', error)
+        // Error updating parameters
         toast({
           title: 'Error',
           description: 'Failed to update model parameters',
@@ -220,7 +217,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
     [user, modelService, toast]
   )
 
-  const handleParameterUpdate = async (provider: AIProvider, modelName: string, parameters: Record<string, any>) => {
+  const handleParameterUpdate = async (provider: AIProvider, modelName: string, parameters: Record<string, number | string | boolean>) => {
     if (!user) return
     
     // Update local state immediately for responsive UI
@@ -261,7 +258,7 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
         description: `${modelDisplayName} has been removed from ${getProviderDisplayName(provider)}`
       })
     } catch (error) {
-      console.error('Error removing model preference:', error)
+      // Error removing model preference
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast({
         title: 'Removal Failed',
@@ -529,13 +526,13 @@ export function AIModelSelector({ onPreferencesUpdate }: AIModelSelectorProps) {
 interface ModelParameterEditorProps {
   provider: AIProvider
   modelName: string
-  parameters: Record<string, any>
-  onParametersChange: (parameters: Record<string, any>) => void
+  parameters: Record<string, number | string | boolean>
+  onParametersChange: (parameters: Record<string, number | string | boolean>) => void
   onResetToDefaults?: () => void
 }
 
 function ModelParameterEditor({ provider, parameters, onParametersChange, onResetToDefaults }: ModelParameterEditorProps) {
-  const handleParameterChange = (key: string, value: any) => {
+  const handleParameterChange = (key: string, value: number | string | boolean) => {
     const newParams = { ...parameters, [key]: value }
     onParametersChange(newParams)
   }

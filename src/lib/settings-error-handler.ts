@@ -30,6 +30,33 @@ export interface SettingsError extends AppError {
   suggestedAction?: string
 }
 
+export class SettingsErrorClass extends Error implements SettingsError {
+  public readonly type: any
+  public readonly settingsType: SettingsErrorType
+  public readonly provider?: string
+  public readonly field?: string
+  public readonly retryable: boolean
+  public readonly suggestedAction?: string
+  public readonly timestamp: Date
+  public readonly details?: any
+
+  constructor(data: SettingsError) {
+    super(data.message)
+    this.name = 'SettingsError'
+    this.type = data.type
+    this.settingsType = data.settingsType
+    this.provider = data.provider
+    this.field = data.field
+    this.retryable = data.retryable
+    this.suggestedAction = data.suggestedAction
+    this.timestamp = data.timestamp || new Date()
+    this.details = data.details
+
+    // Ensure proper prototype chain for instanceof checks
+    Object.setPrototypeOf(this, SettingsErrorClass.prototype)
+  }
+}
+
 export interface RetryConfig {
   maxRetries: number
   baseDelay: number
@@ -67,14 +94,14 @@ export class SettingsErrorHandler extends ErrorHandler {
       return this.categorizeSettingsError(error, context)
     }
 
-    return {
+    return new SettingsErrorClass({
       ...baseError,
       settingsType: SettingsErrorType.SERVICE_UNAVAILABLE,
       provider: context?.provider,
       field: context?.field,
       retryable: false,
       suggestedAction: 'Please try again later or contact support'
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -113,7 +140,7 @@ export class SettingsErrorHandler extends ErrorHandler {
     }
 
     // Default fallback
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.UNKNOWN_ERROR,
       message: 'An unexpected error occurred while managing settings',
       settingsType: SettingsErrorType.SERVICE_UNAVAILABLE,
@@ -122,7 +149,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       retryable: false,
       timestamp: new Date(),
       details: { originalError: error.message, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -166,7 +193,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction = 'Please verify your API key is correct and active'
     }
 
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.API_KEY_INVALID,
       message: userMessage,
       settingsType,
@@ -176,7 +203,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction,
       timestamp: new Date(),
       details: { originalError: error.message, statusCode, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -210,7 +237,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction = 'Please check your connection and try again'
     }
 
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.NETWORK_ERROR,
       message: userMessage,
       settingsType,
@@ -220,7 +247,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction,
       timestamp: new Date(),
       details: { originalError: error.message, statusCode, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -253,7 +280,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction = 'Please check your input and try again'
     }
 
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.VALIDATION_ERROR,
       message: userMessage,
       settingsType,
@@ -263,7 +290,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction,
       timestamp: new Date(),
       details: { originalError: error.message, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -300,7 +327,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       retryable = true
     }
 
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.DATABASE_ERROR,
       message: userMessage,
       settingsType,
@@ -310,7 +337,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction,
       timestamp: new Date(),
       details: { originalError: error.message, statusCode, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**
@@ -336,7 +363,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction = 'Please try again in a few minutes'
     }
 
-    return {
+    return new SettingsErrorClass({
       type: ErrorType.AI_SERVICE_ERROR,
       message: userMessage,
       settingsType,
@@ -346,7 +373,7 @@ export class SettingsErrorHandler extends ErrorHandler {
       suggestedAction,
       timestamp: new Date(),
       details: { originalError: error.message, statusCode, context }
-    } as SettingsError
+    } as SettingsError)
   }
 
   /**

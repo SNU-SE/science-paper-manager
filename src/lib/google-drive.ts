@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, drive_v3, Auth } from 'googleapis';
 import { Readable } from 'stream';
 
 export interface GoogleDriveConfig {
@@ -29,8 +29,8 @@ export interface UploadResult {
 }
 
 export class GoogleDriveService {
-  private drive: any;
-  private auth: any;
+  private drive: drive_v3.Drive;
+  private auth: Auth.OAuth2Client;
 
   constructor(config: GoogleDriveConfig) {
     this.auth = new google.auth.OAuth2(

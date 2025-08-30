@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Settings, Database, AlertCircle, CheckCircle } from 'lucide-react'
 import { SemanticSearch, SearchResults } from '@/components/search'
 import { useVectorService } from '@/hooks/useVectorService'
@@ -57,8 +56,8 @@ export default function SearchPage() {
     try {
       const statsData = await getStats()
       setStats(statsData)
-    } catch (err) {
-      console.error('Failed to load stats:', err)
+    } catch {
+      // Failed to load stats
     }
   }, [getStats])
 
@@ -81,7 +80,7 @@ export default function SearchPage() {
     const searchOptions = {
       matchCount: 20,
       similarityThreshold: 0.5,
-      filter: {} as Record<string, any>
+      filter: {} as Record<string, string | number | string[]>
     }
 
     // Apply filters to search options

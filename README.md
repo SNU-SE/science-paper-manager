@@ -1,14 +1,28 @@
 # Science Paper Manager
 
-AI-powered research paper management system with multi-model analysis and semantic search.
+AI-powered research paper management system with comprehensive user settings, multi-model analysis, and semantic search capabilities.
 
 ## Features
 
+### Core Functionality
 - 🤖 **Multi-Model AI Analysis**: Analyze papers with OpenAI, Anthropic, xAI, and Gemini
-- 🔍 **Semantic Search**: Vector similarity search using pgvector and OpenAI embeddings
+- 🔍 **Advanced Search**: Text-based and semantic search with relevance scoring
 - 📚 **Paper Management**: Organize papers with ratings, notes, tags, and reading status
-- 🔗 **Integrations**: Google Drive storage and Zotero synchronization
 - 💬 **RAG Chat**: Ask questions about your research collection
+- 📤 **Paper Upload**: Support for PDF upload with metadata extraction
+
+### User Settings & Configuration
+- ⚙️ **AI Model Management**: Configure and manage multiple AI service providers
+- 🔑 **API Key Management**: Secure client-side storage and validation of API keys
+- 🔗 **Integration Settings**: Google Drive storage and Zotero synchronization
+- 💾 **Settings Backup/Restore**: Encrypted backup and selective restore functionality
+- 🛡️ **Authentication Security**: Enhanced session management and security verification
+
+### System Features
+- 🎯 **Global Navigation**: Consistent navigation across all pages with accessibility support
+- ⚡ **Performance Optimized**: React optimizations, lazy loading, and bundle optimization
+- ♿ **Accessibility**: WCAG 2.1 AA compliance with keyboard navigation and screen reader support
+- 🧪 **Comprehensive Testing**: Unit tests, integration tests, and E2E test coverage
 
 ## Tech Stack
 
@@ -90,7 +104,17 @@ src/
 - `npm run dev` - Start development server with Turbopack
 - `npm run build` - Build for production
 - `npm run start` - Start production server
-- `npm run lint` - Run ESLint
+- `npm run lint` - Run ESLint code analysis
+- `npm run test` - Run Jest unit tests
+- `npm run test:e2e` - Run Playwright E2E tests
+
+### Code Quality
+
+This project maintains high code quality standards with:
+- **ESLint**: TypeScript and React best practices enforcement
+- **Jest**: Unit testing for components and services
+- **Playwright**: E2E testing for critical user flows
+- **TypeScript**: Strict type checking for better reliability
 
 ### Database Setup
 

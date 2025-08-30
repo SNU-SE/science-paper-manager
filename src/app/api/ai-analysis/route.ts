@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AIAnalysisResult } from '@/types'
+import { getSupabaseClient } from '@/lib/database'
+import { TABLES } from '@/lib/database'
 
 // This is a placeholder API route for AI analysis storage
 // In a real implementation, this would integrate with Supabase
@@ -8,15 +10,47 @@ export async function POST(request: NextRequest) {
   try {
     const analysisResult: AIAnalysisResult = await request.json()
     
-    // TODO: Store in Supabase database
-    // For now, just return success
-    console.log('Storing analysis result:', analysisResult.id)
+    // Validate required fields
+    if (!analysisResult.paperId || !analysisResult.modelProvider || !analysisResult.modelName) {
+      return NextResponse.json(
+        { error: 'Missing required fields: paperId, modelProvider, or modelName' },
+        { status: 400 }
+      )
+    }
     
-    return NextResponse.json({ success: true, id: analysisResult.id })
+    // Store in Supabase database
+    const supabase = getSupabaseClient()
+    const { data, error: dbError } = await supabase
+      .from(TABLES.AI_ANALYSES)
+      .insert({
+        paper_id: analysisResult.paperId,
+        model_provider: analysisResult.modelProvider,
+        model_name: analysisResult.modelName,
+        summary: analysisResult.summary || null,
+        keywords: analysisResult.keywords || [],
+        scientific_relevance: analysisResult.scientificRelevance || null,
+        confidence_score: analysisResult.confidenceScore || null,
+        tokens_used: analysisResult.tokensUsed || null,
+        processing_time_ms: analysisResult.processingTimeMs || null
+      })
+      .select()
+      .single()
+    
+    if (dbError) {
+      console.error('Database error storing analysis result:', dbError)
+      return NextResponse.json(
+        { error: 'Failed to store analysis result in database', details: dbError.message },
+        { status: 500 }
+      )
+    }
+    
+    console.log('Successfully stored analysis result:', data.id)
+    return NextResponse.json({ success: true, id: data.id, data })
+    
   } catch (error) {
     console.error('Failed to store analysis result:', error)
     return NextResponse.json(
-      { error: 'Failed to store analysis result' },
+      { error: 'Failed to store analysis result', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -26,58 +60,82 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const paperId = searchParams.get('paperId')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    
+    const supabase = getSupabaseClient()
     
     if (paperId) {
-      // TODO: Fetch from Supabase database for specific paper
-      // For now, return empty results
-      console.log('Fetching analysis results for paper:', paperId)
-      return NextResponse.json({})
+      // Fetch from Supabase database for specific paper
+      const { data, error: dbError } = await supabase
+        .from(TABLES.AI_ANALYSES)
+        .select('*')
+        .eq('paper_id', paperId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      
+      if (dbError) {
+        console.error('Database error fetching analysis results:', dbError)
+        return NextResponse.json(
+          { error: 'Failed to fetch analysis results from database', details: dbError.message },
+          { status: 500 }
+        )
+      }
+      
+      // Transform database results to match expected format
+      const analyses: AIAnalysisResult[] = (data || []).map(row => ({
+        id: row.id,
+        paperId: row.paper_id,
+        modelProvider: row.model_provider as 'openai' | 'anthropic' | 'xai' | 'gemini',
+        modelName: row.model_name,
+        summary: row.summary || '',
+        keywords: row.keywords || [],
+        scientificRelevance: row.scientific_relevance,
+        confidenceScore: row.confidence_score || 0,
+        tokensUsed: row.tokens_used || 0,
+        processingTimeMs: row.processing_time_ms || 0,
+        createdAt: new Date(row.created_at)
+      }))
+      
+      console.log(`Fetched ${analyses.length} analysis results for paper:`, paperId)
+      return NextResponse.json(analyses)
     } else {
-      // Return all analyses - mock data for now
-      const mockAnalyses: AIAnalysisResult[] = [
-        {
-          id: '1',
-          paperId: '1',
-          modelProvider: 'openai',
-          modelName: 'gpt-4',
-          summary: 'This comprehensive survey covers the latest developments in deep learning for NLP...',
-          keywords: ['deep learning', 'natural language processing', 'transformers', 'survey'],
-          confidenceScore: 0.95,
-          tokensUsed: 1500,
-          processingTimeMs: 2500,
-          createdAt: new Date('2024-01-20')
-        },
-        {
-          id: '2',
-          paperId: '1',
-          modelProvider: 'anthropic',
-          modelName: 'claude-3-sonnet',
-          summary: 'An excellent overview of deep learning techniques applied to NLP tasks...',
-          keywords: ['deep learning', 'NLP', 'machine learning', 'neural networks'],
-          confidenceScore: 0.92,
-          tokensUsed: 1200,
-          processingTimeMs: 1800,
-          createdAt: new Date('2024-01-20')
-        },
-        {
-          id: '3',
-          paperId: '2',
-          modelProvider: 'openai',
-          modelName: 'gpt-4',
-          summary: 'The paper presents novel improvements to transformer architecture...',
-          keywords: ['transformer', 'architecture', 'attention mechanism', 'efficiency'],
-          confidenceScore: 0.88,
-          tokensUsed: 1100,
-          processingTimeMs: 2100,
-          createdAt: new Date('2024-02-05')
-        }
-      ]
-      return NextResponse.json(mockAnalyses)
+      // Return all analyses from database
+      const { data, error: dbError } = await supabase
+        .from(TABLES.AI_ANALYSES)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      
+      if (dbError) {
+        console.error('Database error fetching all analysis results:', dbError)
+        return NextResponse.json(
+          { error: 'Failed to fetch analysis results from database', details: dbError.message },
+          { status: 500 }
+        )
+      }
+      
+      // Transform database results to match expected format
+      const analyses: AIAnalysisResult[] = (data || []).map(row => ({
+        id: row.id,
+        paperId: row.paper_id,
+        modelProvider: row.model_provider as 'openai' | 'anthropic' | 'xai' | 'gemini',
+        modelName: row.model_name,
+        summary: row.summary || '',
+        keywords: row.keywords || [],
+        scientificRelevance: row.scientific_relevance,
+        confidenceScore: row.confidence_score || 0,
+        tokensUsed: row.tokens_used || 0,
+        processingTimeMs: row.processing_time_ms || 0,
+        createdAt: new Date(row.created_at)
+      }))
+      
+      console.log(`Fetched ${analyses.length} total analysis results`)
+      return NextResponse.json(analyses)
     }
   } catch (error) {
     console.error('Failed to fetch analysis results:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch analysis results' },
+      { error: 'Failed to fetch analysis results', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

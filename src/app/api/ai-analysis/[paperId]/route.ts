@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseClient } from '@/lib/database'
+import { TABLES } from '@/lib/database'
 
 interface AIAnalysisResult {
   id: string
@@ -75,12 +77,42 @@ export async function GET(
       )
     }
 
-    // Filter analyses for this paper
-    const paperAnalyses = mockAnalyses.filter(analysis => analysis.paperId === paperId)
+    // Fetch analyses from Supabase database
+    const supabase = getSupabaseClient()
+    const { data, error: dbError } = await supabase
+      .from(TABLES.AI_ANALYSES)
+      .select('*')
+      .eq('paper_id', paperId)
+      .order('created_at', { ascending: false })
     
-    // Group by model provider
+    if (dbError) {
+      console.error('Database error fetching analysis results:', dbError)
+      return NextResponse.json(
+        { error: 'Failed to fetch analysis results from database', details: dbError.message },
+        { status: 500 }
+      )
+    }
+    
+    // Transform and group by model provider
     const multiModelAnalysis: MultiModelAnalysis = {}
-    paperAnalyses.forEach(analysis => {
+    const paperAnalyses: AIAnalysisResult[] = []
+    
+    (data || []).forEach(row => {
+      const analysis: AIAnalysisResult = {
+        id: row.id,
+        paperId: row.paper_id,
+        modelProvider: row.model_provider as 'openai' | 'anthropic' | 'xai' | 'gemini',
+        modelName: row.model_name,
+        summary: row.summary || '',
+        keywords: row.keywords || [],
+        scientificRelevance: row.scientific_relevance,
+        confidenceScore: row.confidence_score || 0,
+        tokensUsed: row.tokens_used || 0,
+        processingTimeMs: row.processing_time_ms || 0,
+        createdAt: new Date(row.created_at)
+      }
+      
+      paperAnalyses.push(analysis)
       multiModelAnalysis[analysis.modelProvider] = analysis
     })
     
@@ -92,7 +124,7 @@ export async function GET(
   } catch (error) {
     console.error('Failed to fetch analysis results:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch analysis results' },
+      { error: 'Failed to fetch analysis results', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -128,11 +160,50 @@ export async function POST(
       )
     }
 
-    // TODO: Trigger actual AI analysis
-    // For now, return success message
+    // Verify paper exists in database
+    const supabase = getSupabaseClient()
+    const { data: paper, error: paperError } = await supabase
+      .from(TABLES.PAPERS)
+      .select('id, title')
+      .eq('id', paperId)
+      .single()
+    
+    if (paperError || !paper) {
+      return NextResponse.json(
+        { error: 'Paper not found' },
+        { status: 404 }
+      )
+    }
+    
+    // TODO: Trigger actual AI analysis with background job or queue
+    // For now, create placeholder analysis records to indicate processing status
+    const processingRecords = modelProviders.map(provider => ({
+      paper_id: paperId,
+      model_provider: provider,
+      model_name: 'processing',
+      summary: null,
+      keywords: [],
+      scientific_relevance: { status: 'processing', started_at: new Date().toISOString() },
+      confidence_score: null,
+      tokens_used: null,
+      processing_time_ms: null
+    }))
+    
+    const { error: insertError } = await supabase
+      .from(TABLES.AI_ANALYSES)
+      .upsert(processingRecords, {
+        onConflict: 'paper_id, model_provider',
+        ignoreDuplicates: false
+      })
+    
+    if (insertError) {
+      console.error('Failed to create processing records:', insertError)
+      // Don't fail the request, just log the error
+    }
+    
     return NextResponse.json({
       success: true,
-      message: `Analysis started for paper ${paperId} with models: ${modelProviders.join(', ')}`,
+      message: `Analysis started for paper "${paper.title}" with models: ${modelProviders.join(', ')}`,
       paperId,
       modelProviders,
       status: 'processing'
@@ -140,7 +211,7 @@ export async function POST(
   } catch (error) {
     console.error('Failed to start analysis:', error)
     return NextResponse.json(
-      { error: 'Failed to start analysis' },
+      { error: 'Failed to start analysis', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -160,11 +231,23 @@ export async function DELETE(
       )
     }
 
-    // TODO: Delete from Supabase database
-    // For now, remove from mock data
-    const initialCount = mockAnalyses.length
-    const filteredAnalyses = mockAnalyses.filter(analysis => analysis.paperId !== paperId)
-    const deletedCount = initialCount - filteredAnalyses.length
+    // Delete from Supabase database
+    const supabase = getSupabaseClient()
+    const { data, error: dbError } = await supabase
+      .from(TABLES.AI_ANALYSES)
+      .delete()
+      .eq('paper_id', paperId)
+      .select('id')
+    
+    if (dbError) {
+      console.error('Database error deleting analysis results:', dbError)
+      return NextResponse.json(
+        { error: 'Failed to delete analysis results from database', details: dbError.message },
+        { status: 500 }
+      )
+    }
+    
+    const deletedCount = data?.length || 0
     
     return NextResponse.json({
       success: true,
@@ -174,7 +257,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Failed to delete analysis results:', error)
     return NextResponse.json(
-      { error: 'Failed to delete analysis results' },
+      { error: 'Failed to delete analysis results', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

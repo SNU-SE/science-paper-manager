@@ -1,9 +1,8 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { BookOpen, FileText, Brain, TrendingUp, Clock, CheckCircle } from 'lucide-react'
+import { BookOpen, FileText, Brain, TrendingUp } from 'lucide-react'
 import { Paper, AIAnalysisResult, UserEvaluation } from '@/types'
 
 interface DashboardStatsProps {
@@ -23,7 +22,6 @@ export function DashboardStats({
   const totalPapers = papers.length
   const readPapers = papers.filter(p => p.readingStatus === 'completed').length
   const readingPapers = papers.filter(p => p.readingStatus === 'reading').length
-  const unreadPapers = papers.filter(p => p.readingStatus === 'unread').length
   
   const readingProgress = totalPapers > 0 ? (readPapers / totalPapers) * 100 : 0
   
@@ -38,9 +36,6 @@ export function DashboardStats({
         .reduce((sum, e) => sum + (e.rating || 0), 0) / evaluations.filter(e => e.rating).length
     : 0
   
-  const recentPapers = papers
-    .sort((a, b) => new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime())
-    .slice(0, 3)
 
   if (isLoading) {
     return (

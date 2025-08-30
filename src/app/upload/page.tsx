@@ -4,24 +4,22 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { PaperUpload } from '@/components/papers/PaperUpload'
 import { PaperUploadService } from '@/services/upload/PaperUploadService'
 import { Paper } from '@/types'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 export default function UploadPage() {
-  const router = useRouter()
   
   const uploadService = new PaperUploadService()
 
   const handleUploadComplete = (papers: Partial<Paper>[]) => {
     toast.success(`Successfully uploaded ${papers.length} paper(s)!`)
-    console.log('Uploaded papers:', papers)
+    // Uploaded papers
     // Optionally redirect to papers page
     // router.push('/papers')
   }
 
   const handleUploadError = (error: string) => {
     toast.error(`Upload failed: ${error}`)
-    console.error('Upload error:', error)
+    // Upload error
   }
 
   return (

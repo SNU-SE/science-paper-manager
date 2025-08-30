@@ -128,7 +128,7 @@ const SettingsBackup = memo(({ userId, onSuccess, onError }: SettingsBackupProps
       setBackupPreview(preview)
     } catch (error) {
       // If preview fails, it might need a password
-      console.log('Preview failed, might need password:', error)
+      // Preview failed, might need password
     }
   }, [backupService, importPassword])
 

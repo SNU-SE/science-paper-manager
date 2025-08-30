@@ -173,8 +173,8 @@ export default function SettingsPage() {
                   {user?.id ? (
                     <SettingsBackup 
                       userId={user.id} 
-                      onSuccess={(message) => console.log('Backup success:', message)}
-                      onError={(error) => console.error('Backup error:', error)}
+                      onSuccess={() => {/* Backup success */}}
+                      onError={() => {/* Backup error */}}
                     />
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">

@@ -1,5 +1,7 @@
 import { AIAnalysisResult, MultiModelAnalysis } from '@/types'
 import { AIProvider } from './AIServiceFactory'
+import { getSupabaseClient } from '@/lib/database'
+import { TABLES } from '@/lib/database'
 
 /**
  * Service for storing and retrieving AI analysis results
@@ -265,16 +267,27 @@ export class AnalysisStorageService {
 
   private static async storeInDatabase(result: AIAnalysisResult): Promise<void> {
     try {
-      const response = await fetch('/api/ai-analysis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(result),
-      })
+      // Store directly in Supabase database
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from(TABLES.AI_ANALYSES)
+        .upsert({
+          paper_id: result.paperId,
+          model_provider: result.modelProvider,
+          model_name: result.modelName,
+          summary: result.summary || null,
+          keywords: result.keywords || [],
+          scientific_relevance: result.scientificRelevance || null,
+          confidence_score: result.confidenceScore || null,
+          tokens_used: result.tokensUsed || null,
+          processing_time_ms: result.processingTimeMs || null
+        }, {
+          onConflict: 'paper_id, model_provider',
+          ignoreDuplicates: false
+        })
       
-      if (!response.ok) {
-        throw new Error(`Database storage failed: ${response.statusText}`)
+      if (error) {
+        throw new Error(`Database storage failed: ${error.message}`)
       }
     } catch (error) {
       // Don't throw here - localStorage storage should still work
@@ -284,26 +297,44 @@ export class AnalysisStorageService {
 
   private static async fetchFromDatabase(paperId: string): Promise<MultiModelAnalysis> {
     try {
-      const response = await fetch(`/api/ai-analysis/${paperId}`)
+      // Fetch directly from Supabase database
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase
+        .from(TABLES.AI_ANALYSES)
+        .select('*')
+        .eq('paper_id', paperId)
+        .order('created_at', { ascending: false })
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          return {} // No results found
-        }
-        throw new Error(`Database fetch failed: ${response.statusText}`)
+      if (error) {
+        throw new Error(`Database fetch failed: ${error.message}`)
       }
       
-      const data = await response.json()
+      // Transform and group by model provider
+      const multiModelAnalysis: MultiModelAnalysis = {}
       
-      // Convert date strings back to Date objects
-      Object.values(data).forEach((result: unknown) => {
-        if (result && typeof result === 'object' && 'createdAt' in result) {
-          const typedResult = result as { createdAt: string }
-          ;(result as { createdAt: Date }).createdAt = new Date(typedResult.createdAt)
+      (data || []).forEach(row => {
+        const analysis: AIAnalysisResult = {
+          id: row.id,
+          paperId: row.paper_id,
+          modelProvider: row.model_provider as AIProvider,
+          modelName: row.model_name,
+          summary: row.summary || '',
+          keywords: row.keywords || [],
+          scientificRelevance: row.scientific_relevance,
+          confidenceScore: row.confidence_score || 0,
+          tokensUsed: row.tokens_used || 0,
+          processingTimeMs: row.processing_time_ms || 0,
+          createdAt: new Date(row.created_at)
+        }
+        
+        // Keep the most recent analysis for each provider
+        if (!multiModelAnalysis[analysis.modelProvider] || 
+            analysis.createdAt > multiModelAnalysis[analysis.modelProvider]!.createdAt) {
+          multiModelAnalysis[analysis.modelProvider] = analysis
         }
       })
       
-      return data
+      return multiModelAnalysis
     } catch (error) {
       console.warn('Database fetch failed, using localStorage only:', error)
       return {}
@@ -312,16 +343,21 @@ export class AnalysisStorageService {
 
   private static async deleteFromDatabase(paperId: string, provider?: AIProvider): Promise<void> {
     try {
-      const url = provider 
-        ? `/api/ai-analysis/${paperId}/${provider}`
-        : `/api/ai-analysis/${paperId}`
+      // Delete directly from Supabase database
+      const supabase = getSupabaseClient()
+      let deleteQuery = supabase
+        .from(TABLES.AI_ANALYSES)
+        .delete()
+        .eq('paper_id', paperId)
       
-      const response = await fetch(url, {
-        method: 'DELETE',
-      })
+      if (provider) {
+        deleteQuery = deleteQuery.eq('model_provider', provider)
+      }
       
-      if (!response.ok) {
-        throw new Error(`Database deletion failed: ${response.statusText}`)
+      const { error } = await deleteQuery
+      
+      if (error) {
+        throw new Error(`Database deletion failed: ${error.message}`)
       }
     } catch (error) {
       console.warn('Database deletion failed:', error)

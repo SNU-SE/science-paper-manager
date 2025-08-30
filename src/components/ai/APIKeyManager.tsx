@@ -9,7 +9,6 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Progress } from '@/components/ui/progress'
 import { Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, DollarSign, RefreshCw, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/components/auth/AuthProvider'
@@ -57,7 +56,6 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
   const [tempKeys, setTempKeys] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [validationStates, setValidationStates] = useState<Record<string, any>>({})
   
   const { toast } = useToast()
   const { user } = useAuth()
@@ -75,7 +73,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
         const keys = await apiKeyService.getUserApiKeys(user.id)
         setApiKeys(keys)
       } catch (error) {
-        console.error('Error loading API keys:', error)
+        // Error loading API keys
         toast({
           title: 'Error Loading API Keys',
           description: 'Failed to load your API keys from the database',
@@ -125,7 +123,7 @@ export function APIKeyManager({ onKeysUpdate }: APIKeyManagerProps) {
           setTempKeys(prev => ({ ...prev, [serviceId]: '' }))
         },
         onError: (error: SettingsError) => {
-          console.error(`Error validating ${serviceId} API key:`, error)
+          // Error validating API key
         }
       }
     )
