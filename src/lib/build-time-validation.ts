@@ -16,11 +16,10 @@ export function validateBuildTimeEnvironment(): BuildTimeValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
 
-  // Critical environment variables required for Vercel deployment
+  // Critical environment variables required for build-time (public variables only)
   const criticalVars = {
     'NEXT_PUBLIC_SUPABASE_URL': process.env.NEXT_PUBLIC_SUPABASE_URL,
     'NEXT_PUBLIC_SUPABASE_ANON_KEY': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    'SUPABASE_SERVICE_ROLE_KEY': process.env.SUPABASE_SERVICE_ROLE_KEY,
   }
 
   // Check critical variables
@@ -30,31 +29,32 @@ export function validateBuildTimeEnvironment(): BuildTimeValidationResult {
     }
   }
 
-  // Optional but recommended variables
-  const recommendedVars = {
+  // Runtime variables that are recommended but not required for build
+  const runtimeVars = {
+    'SUPABASE_SERVICE_ROLE_KEY': process.env.SUPABASE_SERVICE_ROLE_KEY,
     'REDIS_URL': process.env.REDIS_URL,
     'NEXTAUTH_SECRET': process.env.NEXTAUTH_SECRET,
     'NEXTAUTH_URL': process.env.NEXTAUTH_URL,
   }
 
-  for (const [key, value] of Object.entries(recommendedVars)) {
+  // Only warn about runtime variables, don't fail the build
+  for (const [key, value] of Object.entries(runtimeVars)) {
     if (!value || value.trim() === '') {
-      warnings.push(`Missing recommended environment variable: ${key} - some features may be disabled`)
+      warnings.push(`Missing runtime environment variable: ${key} - some features may be disabled in production`)
     }
   }
 
-  // Validate URL formats
-  const urlVars = [
-    'NEXT_PUBLIC_SUPABASE_URL',
-    'REDIS_URL',
-    'NEXTAUTH_URL',
-    'DATABASE_URL'
-  ]
+  // Validate URL formats for critical variables only
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && !isValidUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+    errors.push(`Invalid URL format for NEXT_PUBLIC_SUPABASE_URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`)
+  }
 
-  for (const varName of urlVars) {
+  // Validate runtime URL formats (warn only)
+  const runtimeUrlVars = ['REDIS_URL', 'NEXTAUTH_URL', 'DATABASE_URL']
+  for (const varName of runtimeUrlVars) {
     const value = process.env[varName]
     if (value && !isValidUrl(value)) {
-      errors.push(`Invalid URL format for ${varName}: ${value}`)
+      warnings.push(`Invalid URL format for ${varName}: ${value} - this may cause runtime issues`)
     }
   }
 
