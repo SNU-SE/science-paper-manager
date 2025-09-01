@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkPerformanceThresholds } from '@/middleware/performanceMiddleware'
-import { createClient } from '@supabase/supabase-js'
-
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 /**
  * GET /api/monitoring/alerts - 성능 알림 조회
  */
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     // 인증 및 권한 확인
     const authHeader = request.headers.get('authorization')
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: { user }, error: authError } = await getSupabaseClient().auth.getUser(
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     )
 
@@ -58,6 +60,15 @@ export async function GET(request: NextRequest) {
  * POST /api/monitoring/alerts - 알림 상태 업데이트
  */
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     // 인증 및 권한 확인
     const authHeader = request.headers.get('authorization')
@@ -65,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: { user }, error: authError } = await getSupabaseClient().auth.getUser(
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     )
 

@@ -1,5 +1,7 @@
 import * as crypto from 'crypto'
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
 
 export interface EncryptedData {
   encryptedValue: string
@@ -38,10 +40,11 @@ export class SecurityService {
   private static readonly SESSION_TIMEOUT = 60 * 60 * 1000 // 1 hour
   private static readonly CSRF_TOKEN_EXPIRY = 30 * 60 * 1000 // 30 minutes
 
-  private supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  private supabase: SupabaseClient<Database>
+
+  constructor(supabase: SupabaseClient<Database>) {
+    this.supabase = supabase
+  }
 
   /**
    * Encrypt API key using AES-256-CBC with user-specific salt
@@ -641,13 +644,16 @@ export class SecurityService {
   }
 }
 
-let securityServiceInstance: SecurityService | null = null
+export function createSecurityService(supabase: SupabaseClient<Database>): SecurityService {
+  return new SecurityService(supabase)
+}
 
-export function getSecurityService(): SecurityService {
-  if (!securityServiceInstance) {
-    securityServiceInstance = new SecurityService()
+export function getSecurityService(): SecurityService | null {
+  const supabase = createServerSupabaseClient()
+  if (!supabase) {
+    return null
   }
-  return securityServiceInstance
+  return new SecurityService(supabase)
 }
 
 // For backward compatibility, but this will be lazy-loaded
@@ -655,14 +661,54 @@ export const securityService = {
   get instance() {
     return getSecurityService()
   },
-  encryptAPIKey: (...args: Parameters<SecurityService['encryptAPIKey']>) => getSecurityService().encryptAPIKey(...args),
-  decryptAPIKey: (...args: Parameters<SecurityService['decryptAPIKey']>) => getSecurityService().decryptAPIKey(...args),
-  validateSession: (...args: Parameters<SecurityService['validateSession']>) => getSecurityService().validateSession(...args),
-  generateSessionFingerprint: (...args: Parameters<SecurityService['generateSessionFingerprint']>) => getSecurityService().generateSessionFingerprint(...args),
-  detectSuspiciousActivity: (...args: Parameters<SecurityService['detectSuspiciousActivity']>) => getSecurityService().detectSuspiciousActivity(...args),
-  generateCSRFToken: (...args: Parameters<SecurityService['generateCSRFToken']>) => getSecurityService().generateCSRFToken(...args),
-  validateCSRFToken: (...args: Parameters<SecurityService['validateCSRFToken']>) => getSecurityService().validateCSRFToken(...args),
-  storeCSRFToken: (...args: Parameters<SecurityService['storeCSRFToken']>) => getSecurityService().storeCSRFToken(...args),
-  isAccountLocked: (...args: Parameters<SecurityService['isAccountLocked']>) => getSecurityService().isAccountLocked(...args),
-  logSecurityEvent: (...args: Parameters<SecurityService['logSecurityEvent']>) => getSecurityService().logSecurityEvent(...args)
+  encryptAPIKey: async (...args: Parameters<SecurityService['encryptAPIKey']>) => {
+    const service = getSecurityService()
+    if (!service) throw new Error('SecurityService not available - database connection required')
+    return service.encryptAPIKey(...args)
+  },
+  decryptAPIKey: async (...args: Parameters<SecurityService['decryptAPIKey']>) => {
+    const service = getSecurityService()
+    if (!service) throw new Error('SecurityService not available - database connection required')
+    return service.decryptAPIKey(...args)
+  },
+  validateSession: async (...args: Parameters<SecurityService['validateSession']>) => {
+    const service = getSecurityService()
+    if (!service) return { isValid: false }
+    return service.validateSession(...args)
+  },
+  generateSessionFingerprint: (...args: Parameters<SecurityService['generateSessionFingerprint']>) => {
+    const service = getSecurityService()
+    if (!service) throw new Error('SecurityService not available - database connection required')
+    return service.generateSessionFingerprint(...args)
+  },
+  detectSuspiciousActivity: async (...args: Parameters<SecurityService['detectSuspiciousActivity']>) => {
+    const service = getSecurityService()
+    if (!service) return { suspiciousActivity: false, riskLevel: 'low' as const, recommendations: [], detectedPatterns: [] }
+    return service.detectSuspiciousActivity(...args)
+  },
+  generateCSRFToken: (...args: Parameters<SecurityService['generateCSRFToken']>) => {
+    const service = getSecurityService()
+    if (!service) throw new Error('SecurityService not available - database connection required')
+    return service.generateCSRFToken(...args)
+  },
+  validateCSRFToken: async (...args: Parameters<SecurityService['validateCSRFToken']>) => {
+    const service = getSecurityService()
+    if (!service) return false
+    return service.validateCSRFToken(...args)
+  },
+  storeCSRFToken: async (...args: Parameters<SecurityService['storeCSRFToken']>) => {
+    const service = getSecurityService()
+    if (!service) throw new Error('SecurityService not available - database connection required')
+    return service.storeCSRFToken(...args)
+  },
+  isAccountLocked: async (...args: Parameters<SecurityService['isAccountLocked']>) => {
+    const service = getSecurityService()
+    if (!service) return false
+    return service.isAccountLocked(...args)
+  },
+  logSecurityEvent: async (...args: Parameters<SecurityService['logSecurityEvent']>) => {
+    const service = getSecurityService()
+    if (!service) return
+    return service.logSecurityEvent(...args)
+  }
 }

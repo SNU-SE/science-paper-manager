@@ -1,4 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
 import Redis from 'ioredis'
 
 export interface HealthStatus {
@@ -99,10 +101,10 @@ export class HealthCheckService {
     const startTime = Date.now()
     
     try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
+      const supabase = createServerSupabaseClient()
+      if (!supabase) {
+        throw new Error('Database client not available')
+      }
 
       // Basic connectivity test
       const { data, error } = await Promise.race([

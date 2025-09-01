@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { apiUsageService } from '@/services/usage/APIUsageService'
+import { createAPIUsageService } from '@/services/usage/APIUsageService'
 
 /**
  * GET /api/usage - Get user's usage statistics
@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const apiUsageService = createAPIUsageService(supabase)
+
         // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
@@ -81,6 +83,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const apiUsageService = createAPIUsageService(supabase)
+
         // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {

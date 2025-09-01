@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { apiUsageService } from '@/services/usage/APIUsageService'
+import { createAPIUsageService } from '@/services/usage/APIUsageService'
 
 /**
  * GET /api/usage/admin - Get system-wide usage statistics (admin only)
@@ -53,6 +53,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('startDate') ? new Date(searchParams.get('startDate')!) : undefined
     const endDate = searchParams.get('endDate') ? new Date(searchParams.get('endDate')!) : undefined
+
+    // Create API usage service instance
+    const apiUsageService = createAPIUsageService(supabase)
 
     // Get system-wide usage statistics
     const statistics = await apiUsageService.getSystemUsageStatistics(startDate, endDate)
@@ -136,6 +139,9 @@ export async function POST(request: NextRequest) {
 
     const start = startDate ? new Date(startDate) : undefined
     const end = endDate ? new Date(endDate) : undefined
+
+    // Create API usage service instance
+    const apiUsageService = createAPIUsageService(supabase)
 
     // Get user statistics
     const statistics = await apiUsageService.getUserUsageStatistics(targetUserId, start, end)

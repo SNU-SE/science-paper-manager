@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
 
 export interface APIUsageRecord {
@@ -68,13 +68,10 @@ export interface UserRateLimit {
 }
 
 export class APIUsageService {
-  private supabase: ReturnType<typeof createClient<Database>>
+  private supabase: SupabaseClient<Database>
 
-  constructor() {
-    this.supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+  constructor(supabase: SupabaseClient<Database>) {
+    this.supabase = supabase
   }
 
   /**
@@ -520,4 +517,10 @@ export class APIUsageService {
   }
 }
 
-export const apiUsageService = new APIUsageService()
+/**
+ * Factory function to create APIUsageService instance
+ * Use this instead of direct instantiation to avoid build-time environment variable requirements
+ */
+export function createAPIUsageService(supabase: SupabaseClient<Database>): APIUsageService {
+  return new APIUsageService(supabase)
+}

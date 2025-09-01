@@ -1,4 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
 import * as crypto from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
@@ -70,15 +72,12 @@ export interface BackupFilter {
 export type BackupType = 'full' | 'incremental' | 'differential'
 
 export class BackupService {
-  private supabase
+  private supabase: SupabaseClient<Database>
   private backupPath: string
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map()
 
-  constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+  constructor(supabase: SupabaseClient<Database>) {
+    this.supabase = supabase
     this.backupPath = process.env.BACKUP_STORAGE_PATH || '/tmp/backups'
     this.initializeBackupDirectory()
     this.loadScheduledBackups()
@@ -604,6 +603,18 @@ export class BackupService {
       this.scheduledJobs.delete(scheduleId)
     }
   }
+}
+
+export function createBackupService(supabase: SupabaseClient<Database>): BackupService {
+  return new BackupService(supabase)
+}
+
+export function getBackupService(): BackupService | null {
+  const supabase = createServerSupabaseClient()
+  if (!supabase) {
+    return null
+  }
+  return new BackupService(supabase)
 }
 
 export default BackupService

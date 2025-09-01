@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { UserEvaluationService } from '@/services/evaluation/UserEvaluationService'
 import { UserEvaluation } from '@/types'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 function getService() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase configuration is missing. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.')
+  const supabase = createServerSupabaseClient()
+  if (!supabase) {
+    throw new Error('Database client not available')
   }
+  
+  // Extract the URL and key from the supabase client configuration  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
   
   return new UserEvaluationService(supabaseUrl, supabaseKey)
 }

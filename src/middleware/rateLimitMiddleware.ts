@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { apiUsageService } from '@/services/usage/APIUsageService'
-import { createClient } from '@supabase/supabase-js'
+import { createAPIUsageService } from '@/services/usage/APIUsageService'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export interface RateLimitConfig {
   skipPaths?: string[]
@@ -24,6 +24,14 @@ export function createRateLimitMiddleware(config: RateLimitConfig = {}) {
     req: NextRequest,
     context: { params?: any }
   ): Promise<NextResponse | void> {
+    // Create service instances
+    const supabase = createServerSupabaseClient()
+    if (!supabase) {
+      // If Supabase is not available, skip rate limiting
+      return
+    }
+    const apiUsageService = createAPIUsageService(supabase)
+
     // Skip rate limiting for certain paths and methods
     const pathname = req.nextUrl.pathname
     const method = req.method
@@ -101,13 +109,18 @@ export function createUsageTrackingMiddleware() {
       
       // Only track successful requests (2xx status codes)
       if (response.status >= 200 && response.status < 300) {
-        // Add response size to tracking info
-        const responseSize = getResponseSize(response)
-        
-        await apiUsageService.trackUsage({
-          ...trackingInfo,
-          responseSize
-        })
+        const supabase = createServerSupabaseClient()
+        if (supabase) {
+          const apiUsageService = createAPIUsageService(supabase)
+          
+          // Add response size to tracking info
+          const responseSize = getResponseSize(response)
+          
+          await apiUsageService.trackUsage({
+            ...trackingInfo,
+            responseSize
+          })
+        }
       }
 
       // Remove tracking header from response
@@ -194,17 +207,16 @@ function defaultRateLimitHandler(req: NextRequest, limitInfo: any): NextResponse
  */
 async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
   try {
+    const supabase = createServerSupabaseClient()
+    if (!supabase) {
+      return null
+    }
+
     // Try to get user from Authorization header
     const authHeader = req.headers.get('authorization')
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7)
       
-      // Create Supabase client to verify token
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-
       const { data: { user }, error } = await supabase.auth.getUser(token)
       if (!error && user) {
         return user.id
@@ -214,11 +226,6 @@ async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
     // Try to get user from session cookie
     const sessionCookie = req.cookies.get('sb-access-token')
     if (sessionCookie) {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-
       const { data: { user }, error } = await supabase.auth.getUser(sessionCookie.value)
       if (!error && user) {
         return user.id

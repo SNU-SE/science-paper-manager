@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { apiUsageService } from '@/services/usage/APIUsageService'
+import { createAPIUsageService } from '@/services/usage/APIUsageService'
 
 /**
  * GET /api/usage/limits - Get user's rate limits
@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const apiUsageService = createAPIUsageService(supabase)
+
         // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
@@ -62,6 +64,8 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const apiUsageService = createAPIUsageService(supabase)
+
         // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
@@ -151,6 +155,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const apiUsageService = createAPIUsageService(supabase)
+
         // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {

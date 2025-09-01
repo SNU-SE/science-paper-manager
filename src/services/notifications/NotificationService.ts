@@ -1,5 +1,7 @@
 import Redis from 'ioredis'
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
 
 export interface Notification {
   id: string
@@ -54,19 +56,15 @@ export interface NotificationStats {
  */
 export class NotificationService {
   private redis: Redis
-  private supabase: any
+  private supabase: SupabaseClient<Database>
 
-  constructor(redisUrl?: string) {
+  constructor(supabase: SupabaseClient<Database>, redisUrl?: string) {
+    this.supabase = supabase
     this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379', {
       maxRetriesPerRequest: 3,
       retryDelayOnFailover: 100,
       lazyConnect: true
     })
-
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
   }
 
   /**
@@ -606,15 +604,14 @@ export class NotificationService {
   }
 }
 
-// Singleton instance
-let notificationServiceInstance: NotificationService | null = null
+export function createNotificationService(supabase: SupabaseClient<Database>, redisUrl?: string): NotificationService {
+  return new NotificationService(supabase, redisUrl)
+}
 
-/**
- * Get or create notification service singleton
- */
-export function getNotificationService(): NotificationService {
-  if (!notificationServiceInstance) {
-    notificationServiceInstance = new NotificationService()
+export function getNotificationService(redisUrl?: string): NotificationService | null {
+  const supabase = createServerSupabaseClient()
+  if (!supabase) {
+    return null
   }
-  return notificationServiceInstance
+  return new NotificationService(supabase, redisUrl)
 }
