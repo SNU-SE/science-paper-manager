@@ -83,15 +83,18 @@ const nextConfig: NextConfig = {
     return 'build-' + Date.now()
   },
 
-  // Minimal webpack configuration for googleapis exclusion only
+  // Minimal webpack configuration for server-only packages
   webpack: (config, { isServer }) => {
-    // Only exclude googleapis for client bundle - minimal approach
+    // Only exclude server-only packages for client bundle
     if (!isServer) {
       // Simple externals for server-only packages
       config.externals = config.externals || [];
       config.externals.push({
         googleapis: 'googleapis',
         'google-auth-library': 'google-auth-library',
+        ioredis: 'ioredis',
+        bullmq: 'bullmq',
+        'node-cron': 'node-cron',
       });
     }
 
