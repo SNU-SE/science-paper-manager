@@ -81,6 +81,16 @@ export const CacheTTL = {
 }
 
 /**
+ * React Query default options
+ */
+export const queryOptions = {
+  staleTime: CacheTTL.MEDIUM * 1000, // 5 minutes in milliseconds
+  gcTime: CacheTTL.HOUR * 1000,      // 1 hour in milliseconds (formerly cacheTime)
+  refetchOnWindowFocus: false,
+  refetchOnMount: true
+}
+
+/**
  * Cache wrapper for database queries
  */
 export async function cacheQuery<T>(

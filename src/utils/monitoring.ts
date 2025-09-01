@@ -63,12 +63,11 @@ class MonitoringService {
 
   private initializeSentry(): void {
     const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN
-    if (!sentryDsn) return
+    if (!sentryDsn || typeof window === 'undefined') return
 
     try {
       // Dynamic import to avoid bundling Sentry if not needed
-      if (typeof window !== 'undefined') {
-        import('@sentry/nextjs').then((Sentry) => {
+      import('@sentry/nextjs').then((Sentry) => {
         Sentry.init({
           dsn: sentryDsn,
           environment: process.env.NODE_ENV,
@@ -91,10 +90,9 @@ class MonitoringService {
         if (this.userId) {
           Sentry.setUser({ id: this.userId })
         }
-        }).catch((error) => {
-          console.warn('Sentry not available:', error)
-        })
-      }
+      }).catch((error) => {
+        console.warn('Sentry not available:', error)
+      })
     } catch (error) {
       console.warn('Failed to initialize Sentry:', error)
     }
