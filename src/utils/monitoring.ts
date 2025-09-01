@@ -61,38 +61,36 @@ class MonitoringService {
     }, 30000) // Every 30 seconds
   }
 
-  private initializeSentry(): void {
+  private async initializeSentry(): Promise<void> {
     const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN
     if (!sentryDsn || typeof window === 'undefined') return
 
     try {
-      // Dynamic import to avoid bundling Sentry if not needed
-      import('@sentry/nextjs').then((Sentry) => {
-        Sentry.init({
-          dsn: sentryDsn,
-          environment: process.env.NODE_ENV,
-          tracesSampleRate: 0.1,
-          beforeSend: (event) => {
-            // Filter out non-critical errors
-            if (event.exception?.values?.[0]?.value?.includes('Non-Error promise rejection')) {
-              return null
-            }
-            return event
-          },
-          integrations: [
-            new Sentry.BrowserTracing({
-              tracingOrigins: [window.location.hostname],
-            }),
-          ],
-        })
-
-        // Set user context
-        if (this.userId) {
-          Sentry.setUser({ id: this.userId })
-        }
-      }).catch((error) => {
-        console.warn('Sentry not available:', error)
+      // Dynamic import with proper error handling
+      const Sentry = await import('@sentry/nextjs')
+      
+      Sentry.init({
+        dsn: sentryDsn,
+        environment: process.env.NODE_ENV,
+        tracesSampleRate: 0.1,
+        beforeSend: (event) => {
+          // Filter out non-critical errors
+          if (event.exception?.values?.[0]?.value?.includes('Non-Error promise rejection')) {
+            return null
+          }
+          return event
+        },
+        integrations: [
+          Sentry.browserTracingIntegration({
+            tracePropagationTargets: [window.location.hostname],
+          }),
+        ],
       })
+
+      // Set user context
+      if (this.userId) {
+        Sentry.setUser({ id: this.userId })
+      }
     } catch (error) {
       console.warn('Failed to initialize Sentry:', error)
     }
@@ -203,8 +201,16 @@ class MonitoringService {
     this.userId = userId
 
     // Update Sentry user context
-    if (typeof window !== 'undefined' && (window as any).Sentry) {
-      (window as any).Sentry.setUser({ id: userId })
+    if (typeof window !== 'undefined') {
+      try {
+        import('@sentry/nextjs').then((Sentry) => {
+          Sentry.setUser({ id: userId })
+        }).catch(() => {
+          // Sentry not available, silently continue
+        })
+      } catch {
+        // Dynamic import failed, silently continue
+      }
     }
   }
 
@@ -218,15 +224,23 @@ class MonitoringService {
     analytics.trackError(new Error(error.message), error.context?.type)
 
     // Report to Sentry if available
-    if (typeof window !== 'undefined' && (window as any).Sentry) {
-      (window as any).Sentry.captureException(new Error(error.message), {
-        contexts: {
-          error_details: error.context,
-          user_agent: error.userAgent,
-          url: error.url
-        },
-        user: { id: error.userId }
-      })
+    if (typeof window !== 'undefined') {
+      try {
+        import('@sentry/nextjs').then((Sentry) => {
+          Sentry.captureException(new Error(error.message), {
+            contexts: {
+              error_details: error.context,
+              user_agent: error.userAgent,
+              url: error.url
+            },
+            user: { id: error.userId }
+          })
+        }).catch(() => {
+          // Sentry not available, silently continue
+        })
+      } catch {
+        // Dynamic import failed, silently continue
+      }
     }
 
     // Flush immediately for critical errors

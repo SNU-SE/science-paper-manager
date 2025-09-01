@@ -9,11 +9,27 @@ export function createServerSupabaseClient() {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseKey) {
-    console.warn('Supabase credentials not available')
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('supabaseKey is required in production')
+    }
+    console.warn('Supabase credentials not available - using development mode')
     return null
   }
   
-  return createClient(supabaseUrl, supabaseKey)
+  try {
+    return createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  } catch (error) {
+    console.error('Failed to create Supabase client:', error)
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Failed to initialize Supabase client in production')
+    }
+    return null
+  }
 }
 
 /**

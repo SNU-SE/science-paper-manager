@@ -21,7 +21,7 @@ const envSchema = z.object({
   TEST_DATABASE_URL: z.string().url().optional(),
   
   // Redis
-  REDIS_URL: z.string().url(),
+  REDIS_URL: z.string().url().optional(),
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.coerce.number().default(0),
   TEST_REDIS_URL: z.string().url().optional(),
@@ -164,7 +164,7 @@ export const config = {
   
   // Redis configuration
   redis: {
-    url: env.REDIS_URL,
+    url: env.REDIS_URL || null,
     password: env.REDIS_PASSWORD,
     db: env.REDIS_DB,
     testUrl: env.TEST_REDIS_URL,
@@ -290,9 +290,9 @@ export function getDatabaseUrl(): string {
 }
 
 // Utility function to get environment-specific Redis URL
-export function getRedisUrl(): string {
+export function getRedisUrl(): string | null {
   if (config.isTest && env.TEST_REDIS_URL) {
     return env.TEST_REDIS_URL
   }
-  return env.REDIS_URL
+  return env.REDIS_URL || null
 }

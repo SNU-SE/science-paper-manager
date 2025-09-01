@@ -16,7 +16,17 @@ export class JobQueueManager implements IJobQueueManager {
   private readonly QUEUE_NAME = 'ai-analysis'
   
   constructor(redisUrl?: string) {
-    this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379', {
+    const redisConnectionUrl = redisUrl || process.env.REDIS_URL
+    
+    if (!redisConnectionUrl) {
+      console.warn('Redis URL not configured - background job processing disabled')
+      // Create null objects to prevent runtime errors
+      this.redis = null as any
+      this.analysisQueue = null as any
+      return
+    }
+    
+    this.redis = new Redis(redisConnectionUrl, {
       maxRetriesPerRequest: 3,
       retryDelayOnFailover: 100,
       lazyConnect: true
@@ -39,6 +49,8 @@ export class JobQueueManager implements IJobQueueManager {
   }
 
   private setupEventListeners(): void {
+    if (!this.analysisQueue) return
+    
     this.analysisQueue.on('error', (error) => {
       console.error('Queue error:', error)
     })
@@ -61,6 +73,10 @@ export class JobQueueManager implements IJobQueueManager {
   }
 
   async addAnalysisJob(paperId: string, providers: AIProvider[]): Promise<string> {
+    if (!this.analysisQueue) {
+      throw new Error('Background job processing is disabled - Redis not configured')
+    }
+    
     try {
       const jobData: AnalysisJobData = {
         paperId,

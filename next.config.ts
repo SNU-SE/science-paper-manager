@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+// Import build-time validation
+if (process.env.NODE_ENV === 'production') {
+  require('./src/lib/build-time-validation');
+}
+
 const nextConfig: NextConfig = {
   // Minimal experimental configuration
   experimental: {

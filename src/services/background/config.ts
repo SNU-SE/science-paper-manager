@@ -42,7 +42,7 @@ export interface BackgroundJobConfig {
  */
 export const defaultBackgroundJobConfig: BackgroundJobConfig = {
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: process.env.REDIS_URL || '',
     maxRetriesPerRequest: 3,
     retryDelayOnFailover: 100,
     lazyConnect: true
@@ -107,7 +107,8 @@ export function getBackgroundJobConfig(): BackgroundJobConfig {
  */
 export function validateBackgroundJobConfig(config: BackgroundJobConfig): void {
   if (!config.redis.url) {
-    throw new Error('Redis URL is required')
+    console.warn('Redis URL is not configured - background job processing will be disabled')
+    return
   }
   
   if (config.worker.concurrency < 1) {
