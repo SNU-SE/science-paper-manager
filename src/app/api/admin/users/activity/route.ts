@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { withSupabase } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,54 +7,89 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Get active user sessions with user details
-    const { data: userSessions, error } = await supabase
-      .from('user_sessions')
-      .select(`
-        user_id,
-        last_activity,
-        session_duration,
-        actions_count,
-        ip_address,
-        user_agent,
-        users!inner(email, created_at)
-      `)
-      .gte('last_activity', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
-      .order('last_activity', { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (error) {
-      throw error
-    }
-
-    // Transform the data for the frontend
-    const userActivity = userSessions?.map(session => ({
-      userId: session.user_id,
-      email: session.users.email,
-      lastActivity: session.last_activity,
-      sessionDuration: session.session_duration || 0,
-      actionsCount: session.actions_count || 0,
-      ipAddress: session.ip_address || 'Unknown',
-      userAgent: session.user_agent || 'Unknown'
-    })) || []
-
-    // Get total count for pagination
-    const { count } = await supabase
-      .from('user_sessions')
-      .select('*', { count: 'exact', head: true })
-      .gte('last_activity', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-
-    return NextResponse.json({
+    const mockData = {
       success: true,
-      data: userActivity,
+      data: [
+        {
+          userId: 'mock-user-1',
+          email: 'user1@example.com',
+          lastActivity: new Date().toISOString(),
+          sessionDuration: 3600,
+          actionsCount: 25,
+          ipAddress: '192.168.1.1',
+          userAgent: 'Mozilla/5.0 (Mock Browser)'
+        },
+        {
+          userId: 'mock-user-2',
+          email: 'user2@example.com',
+          lastActivity: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          sessionDuration: 1800,
+          actionsCount: 12,
+          ipAddress: '192.168.1.2',
+          userAgent: 'Mozilla/5.0 (Mock Browser)'
+        }
+      ],
       pagination: {
-        total: count || 0,
+        total: 2,
         limit,
         offset,
-        hasMore: (count || 0) > offset + limit
+        hasMore: false
       },
       timestamp: new Date().toISOString()
-    })
+    }
+
+    const result = await withSupabase(async (supabase) => {
+      // Get active user sessions with user details
+      const { data: userSessions, error } = await supabase
+        .from('user_sessions')
+        .select(`
+          user_id,
+          last_activity,
+          session_duration,
+          actions_count,
+          ip_address,
+          user_agent,
+          users!inner(email, created_at)
+        `)
+        .gte('last_activity', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
+        .order('last_activity', { ascending: false })
+        .range(offset, offset + limit - 1)
+
+      if (error) {
+        throw error
+      }
+
+      // Transform the data for the frontend
+      const userActivity = userSessions?.map(session => ({
+        userId: session.user_id,
+        email: session.users.email,
+        lastActivity: session.last_activity,
+        sessionDuration: session.session_duration || 0,
+        actionsCount: session.actions_count || 0,
+        ipAddress: session.ip_address || 'Unknown',
+        userAgent: session.user_agent || 'Unknown'
+      })) || []
+
+      // Get total count for pagination
+      const { count } = await supabase
+        .from('user_sessions')
+        .select('*', { count: 'exact', head: true })
+        .gte('last_activity', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+
+      return {
+        success: true,
+        data: userActivity,
+        pagination: {
+          total: count || 0,
+          limit,
+          offset,
+          hasMore: (count || 0) > offset + limit
+        },
+        timestamp: new Date().toISOString()
+      }
+    }, mockData)
+
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('User activity fetch error:', error)
@@ -94,73 +124,110 @@ export async function POST(request: NextRequest) {
       ? new Date(timeRange.end)
       : new Date()
 
-    // Get user's activity logs
-    const { data: activityLogs, error: logsError } = await supabase
-      .from('user_activity_logs')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('created_at', startTime.toISOString())
-      .lte('created_at', endTime.toISOString())
-      .order('created_at', { ascending: false })
-
-    if (logsError) {
-      throw logsError
-    }
-
-    // Get user's API usage
-    const { data: apiUsage, error: usageError } = await supabase
-      .from('api_usage_tracking')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('created_at', startTime.toISOString())
-      .lte('created_at', endTime.toISOString())
-
-    if (usageError) {
-      throw usageError
-    }
-
-    // Get user's background jobs
-    const { data: backgroundJobs, error: jobsError } = await supabase
-      .from('background_jobs')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('created_at', startTime.toISOString())
-      .lte('created_at', endTime.toISOString())
-      .order('created_at', { ascending: false })
-
-    if (jobsError) {
-      throw jobsError
-    }
-
-    // Calculate activity statistics
-    const activityStats = {
-      totalActions: activityLogs?.length || 0,
-      apiCalls: apiUsage?.length || 0,
-      backgroundJobs: backgroundJobs?.length || 0,
-      mostUsedFeatures: activityLogs?.reduce((acc, log) => {
-        const feature = log.action_type
-        acc[feature] = (acc[feature] || 0) + 1
-        return acc
-      }, {} as Record<string, number>) || {},
-      dailyActivity: activityLogs?.reduce((acc, log) => {
-        const date = new Date(log.created_at).toDateString()
-        acc[date] = (acc[date] || 0) + 1
-        return acc
-      }, {} as Record<string, number>) || {}
-    }
-
-    return NextResponse.json({
+    const mockData = {
       success: true,
       data: {
         userId,
         timeRange: { start: startTime, end: endTime },
-        activityLogs: activityLogs || [],
-        apiUsage: apiUsage || [],
-        backgroundJobs: backgroundJobs || [],
-        statistics: activityStats
+        activityLogs: [
+          {
+            id: 'mock-log-1',
+            action_type: 'paper_upload',
+            created_at: new Date().toISOString(),
+            metadata: { filename: 'example.pdf' }
+          }
+        ],
+        apiUsage: [
+          {
+            id: 'mock-usage-1',
+            endpoint: '/api/papers',
+            method: 'POST',
+            created_at: new Date().toISOString()
+          }
+        ],
+        backgroundJobs: [],
+        statistics: {
+          totalActions: 1,
+          apiCalls: 1,
+          backgroundJobs: 0,
+          mostUsedFeatures: { paper_upload: 1 },
+          dailyActivity: { [new Date().toDateString()]: 1 }
+        }
       },
       timestamp: new Date().toISOString()
-    })
+    }
+
+    const result = await withSupabase(async (supabase) => {
+      // Get user's activity logs
+      const { data: activityLogs, error: logsError } = await supabase
+        .from('user_activity_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('created_at', startTime.toISOString())
+        .lte('created_at', endTime.toISOString())
+        .order('created_at', { ascending: false })
+
+      if (logsError) {
+        throw logsError
+      }
+
+      // Get user's API usage
+      const { data: apiUsage, error: usageError } = await supabase
+        .from('api_usage_tracking')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('created_at', startTime.toISOString())
+        .lte('created_at', endTime.toISOString())
+
+      if (usageError) {
+        throw usageError
+      }
+
+      // Get user's background jobs
+      const { data: backgroundJobs, error: jobsError } = await supabase
+        .from('background_jobs')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('created_at', startTime.toISOString())
+        .lte('created_at', endTime.toISOString())
+        .order('created_at', { ascending: false })
+
+      if (jobsError) {
+        throw jobsError
+      }
+
+      // Calculate activity statistics
+      const activityStats = {
+        totalActions: activityLogs?.length || 0,
+        apiCalls: apiUsage?.length || 0,
+        backgroundJobs: backgroundJobs?.length || 0,
+        mostUsedFeatures: activityLogs?.reduce((acc, log) => {
+          const feature = log.action_type
+          acc[feature] = (acc[feature] || 0) + 1
+          return acc
+        }, {} as Record<string, number>) || {},
+        dailyActivity: activityLogs?.reduce((acc, log) => {
+          const date = new Date(log.created_at).toDateString()
+          acc[date] = (acc[date] || 0) + 1
+          return acc
+        }, {} as Record<string, number>) || {}
+      }
+
+      return {
+        success: true,
+        data: {
+          userId,
+          timeRange: { start: startTime, end: endTime },
+          activityLogs: activityLogs || [],
+          apiUsage: apiUsage || [],
+          backgroundJobs: backgroundJobs || [],
+          statistics: activityStats
+        },
+        timestamp: new Date().toISOString()
+      }
+    }, mockData)
+
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('Detailed user activity fetch error:', error)

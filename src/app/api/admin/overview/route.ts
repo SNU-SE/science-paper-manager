@@ -1,39 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { withSupabase } from '@/lib/supabase-server'
 import { HealthCheckService } from '@/services/health/HealthCheckService'
 import { PerformanceMonitor } from '@/services/monitoring/PerformanceMonitor'
 import { CacheService } from '@/services/cache/CacheService'
 
 export async function GET(request: NextRequest) {
   try {
-    // Initialize Supabase client with environment check
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
-    if (!supabaseUrl || !supabaseKey) {
-      console.warn('Supabase credentials not available, returning mock data')
-      return NextResponse.json({
-        success: true,
-        data: {
-          status: 'healthy',
-          uptime: 86400,
-          activeUsers: 5,
-          backgroundJobs: { running: 2, pending: 1, failed: 0 },
-          performance: { avgResponseTime: 150, errorRate: 0.01, requestsPerMinute: 45 },
-          resources: { memoryUsage: 45, cpuUsage: 15, diskUsage: 30 },
-          security: { activeThreats: 0, blockedRequests: 12, suspiciousActivity: 3 },
-          backup: { 
-            lastBackup: new Date().toISOString(), 
-            nextScheduled: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            status: 'success' 
-          },
-          cache: { hitRate: 0.85, memoryUsage: 256, totalKeys: 1250 }
+    const mockData = {
+      success: true,
+      data: {
+        status: 'healthy',
+        uptime: 86400,
+        activeUsers: 5,
+        backgroundJobs: { running: 2, pending: 1, failed: 0 },
+        performance: { avgResponseTime: 150, errorRate: 0.01, requestsPerMinute: 45 },
+        resources: { memoryUsage: 45, cpuUsage: 15, diskUsage: 30 },
+        security: { activeThreats: 0, blockedRequests: 12, suspiciousActivity: 3 },
+        backup: { 
+          lastBackup: new Date().toISOString(), 
+          nextScheduled: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          status: 'success' 
         },
-        timestamp: new Date().toISOString()
-      })
+        cache: { hitRate: 0.85, memoryUsage: 256, totalKeys: 1250 }
+      },
+      timestamp: new Date().toISOString()
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const result = await withSupabase(async (supabase) => {
 
     // Get system health
     const healthService = new HealthCheckService()
@@ -131,11 +124,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      data: overview,
-      timestamp: new Date().toISOString()
-    })
+      return {
+        success: true,
+        data: overview,
+        timestamp: new Date().toISOString()
+      }
+    }, mockData)
+
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('Admin overview error:', error)
