@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50')
@@ -126,6 +130,15 @@ export async function GET(request: NextRequest) {
 
 // Create a new security event
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const eventData = await request.json()
 

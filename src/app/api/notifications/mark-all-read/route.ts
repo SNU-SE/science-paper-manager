@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getNotificationService } from '@/services/notifications/NotificationService'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 /**
  * POST /api/notifications/mark-all-read - Mark all notifications as read
  */
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     // Get user from session
     const authHeader = request.headers.get('authorization')

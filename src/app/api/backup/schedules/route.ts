@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { BackupService } from '@/services/backup/BackupService'
-import { createClient } from '@supabase/supabase-js'
 import * as crypto from 'crypto'
 
 let backupService: BackupService | null = null
@@ -14,13 +14,17 @@ function getBackupService() {
 
 // GET /api/backup/schedules - 백업 스케줄 목록 조회
 export async function GET(request: NextRequest) {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
     )
+  }
 
-    const { data: schedules, error } = await supabase
+  try {
+        const { data: schedules, error } = await supabase
       .from('backup_schedules')
       .select('*')
       .order('created_at', { ascending: false })
@@ -48,6 +52,15 @@ export async function GET(request: NextRequest) {
 
 // POST /api/backup/schedules - 새 백업 스케줄 생성
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const body = await request.json()
     const { name, type, cronExpression, isActive = true, retentionDays = 30 } = body

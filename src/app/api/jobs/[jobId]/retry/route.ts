@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { JobQueueManager } from '@/services/background/JobQueueManager'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { jobId } = params
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { BackupService } from '@/services/backup/BackupService'
-import { createClient } from '@supabase/supabase-js'
 
 let backupService: BackupService | null = null
 
@@ -16,15 +16,19 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { scheduleId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { scheduleId } = params
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: schedule, error } = await supabase
+        const { data: schedule, error } = await supabase
       .from('backup_schedules')
       .select('*')
       .eq('id', scheduleId)
@@ -59,6 +63,15 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { scheduleId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { scheduleId } = params
     const body = await request.json()
@@ -73,12 +86,7 @@ export async function PUT(
       )
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    // 기존 스케줄 조회
+        // 기존 스케줄 조회
     const { data: existingSchedule, error: fetchError } = await supabase
       .from('backup_schedules')
       .select('*')
@@ -127,6 +135,15 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { scheduleId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { scheduleId } = params
 
@@ -139,12 +156,7 @@ export async function DELETE(
       )
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { error } = await supabase
+        const { error } = await supabase
       .from('backup_schedules')
       .delete()
       .eq('id', scheduleId)

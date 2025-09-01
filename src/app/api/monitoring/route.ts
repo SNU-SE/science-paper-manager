@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor'
 import { checkPerformanceThresholds } from '@/middleware/performanceMiddleware'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 /**
  * GET /api/monitoring - 성능 메트릭 조회
  */
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     // 인증 확인
     const authHeader = request.headers.get('authorization')

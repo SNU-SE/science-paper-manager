@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { BackupService } from '@/services/backup/BackupService'
-import { createClient } from '@supabase/supabase-js'
 
 let backupService: BackupService | null = null
 
@@ -13,6 +13,15 @@ function getBackupService() {
 
 // GET /api/backup - 백업 목록 조회
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') as 'full' | 'incremental' | 'differential' | null
@@ -51,6 +60,15 @@ export async function GET(request: NextRequest) {
 
 // POST /api/backup - 새 백업 생성
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const body = await request.json()
     const { type } = body
@@ -66,12 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 관리자 권한 확인 (실제 구현에서는 JWT 토큰 검증 필요)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const authHeader = request.headers.get('authorization')
+        const authHeader = request.headers.get('authorization')
     if (!authHeader) {
       return NextResponse.json(
         { success: false, error: 'Authorization required' },

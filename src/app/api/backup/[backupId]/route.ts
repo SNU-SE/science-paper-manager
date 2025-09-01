@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { BackupService } from '@/services/backup/BackupService'
 
 let backupService: BackupService | null = null
@@ -15,6 +16,15 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { backupId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { backupId } = params
 
@@ -50,6 +60,15 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { backupId: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { backupId } = params
 
@@ -64,12 +83,7 @@ export async function DELETE(
 
     // 백업 기록 삭제 (실제 파일 삭제는 별도 처리)
     const { createClient } = await import('@supabase/supabase-js')
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { error } = await supabase
+        const { error } = await supabase
       .from('backup_records')
       .delete()
       .eq('id', backupId)

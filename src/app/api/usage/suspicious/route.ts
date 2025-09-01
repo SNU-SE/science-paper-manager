@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { apiUsageService } from '@/services/usage/APIUsageService'
 
 /**
  * GET /api/usage/suspicious - Get suspicious activity
  */
 export async function GET(request: NextRequest) {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
     )
+  }
 
-    // Get user from request
+  try {
+        // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json(
@@ -65,13 +69,17 @@ export async function GET(request: NextRequest) {
  * PUT /api/usage/suspicious/[id]/resolve - Resolve suspicious activity (admin only)
  */
 export async function PUT(request: NextRequest) {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
     )
+  }
 
-    // Get user from request
+  try {
+        // Get user from request
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json(

@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { securityService } from '@/services/security/SecurityService'
 import { securityMiddleware } from '@/middleware/securityMiddleware'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 /**
  * Get user's security activity log
  * GET /api/security/activity
  */
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   // Apply security middleware
   const middleware = securityMiddleware({ 
     logAccess: true, 
@@ -111,6 +115,15 @@ export async function GET(request: NextRequest) {
  * POST /api/security/activity/analyze
  */
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   // Apply security middleware
   const middleware = securityMiddleware({ 
     requireCSRF: true, 
@@ -174,6 +187,15 @@ export async function POST(request: NextRequest) {
  * GET /api/security/activity/stats
  */
 export async function stats(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+  
+  if (!supabase) {
+    return NextResponse.json(
+      { success: false, error: 'Database not available' },
+      { status: 503 }
+    )
+  }
+
   try {
     // Get user ID from session
     const sessionToken = request.cookies.get('session-token')?.value
