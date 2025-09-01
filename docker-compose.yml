@@ -1,0 +1,118 @@
+# Docker Compose configuration for Science Paper Manager
+version: '3.8'
+
+services:
+  # Redis for caching and job queue
+  redis:
+    image: redis:7-alpine
+    container_name: science-paper-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: >
+      sh -c "
+        if [ -n \"$$REDIS_PASSWORD\" ]; then
+          redis-server --requirepass $$REDIS_PASSWORD --appendonly yes
+        else
+          redis-server --appendonly yes
+        fi
+      "
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Main web application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: science-paper-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - WEBSOCKET_PORT=3001
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - backup_data:/var/backups/science-paper-manager
+      - log_data:/var/log
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Background worker processes
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: science-paper-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-5}
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - log_data:/var/log
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "const Redis = require('ioredis'); const redis = new Redis(process.env.REDIS_URL); redis.ping().then(() => process.exit(0)).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # WebSocket server (if running separately)
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: science-paper-websocket
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - WEBSOCKET_ENABLED=true
+      - WEBSOCKET_PORT=3001
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["node", "-e", "require('./src/lib/websocket-server.ts')"]
+    profiles:
+      - websocket-separate
+
+volumes:
+  redis_data:
+    driver: local
+  backup_data:
+    driver: local
+  log_data:
+    driver: local
+
+networks:
+  default:
+    name: science-paper-network

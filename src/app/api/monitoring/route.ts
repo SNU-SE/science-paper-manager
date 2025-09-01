@@ -1,121 +1,161 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor'
+import { checkPerformanceThresholds } from '@/middleware/performanceMiddleware'
+import { createClient } from '@supabase/supabase-js'
 
-interface ErrorReport {
-  message: string
-  stack?: string
-  url: string
-  lineNumber?: number
-  columnNumber?: number
-  timestamp: string
-  userAgent: string
-  userId?: string
-  context?: any
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-interface PerformanceReport {
-  metric: string
-  value: number
-  timestamp: string
-  url: string
-  userId?: string
-  context?: any
-}
-
-interface MonitoringData {
-  errors: ErrorReport[]
-  performance: PerformanceReport[]
-  timestamp: string
-}
-
-export async function POST(request: NextRequest) {
+/**
+ * GET /api/monitoring - 성능 메트릭 조회
+ */
+export async function GET(request: NextRequest) {
   try {
-    const data: MonitoringData = await request.json()
-    
-    // Log errors and performance data
-    if (data.errors.length > 0) {
-      console.error('Client Errors:', JSON.stringify(data.errors, null, 2))
-      
-      // In production, you might want to send this to a logging service
-      // like Datadog, New Relic, or a custom logging endpoint
-      if (process.env.NODE_ENV === 'production') {
-        await logToExternalService('errors', data.errors)
-      }
+    // 인증 확인
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    if (data.performance.length > 0) {
-      console.log('Performance Metrics:', JSON.stringify(data.performance, null, 2))
-      
-      if (process.env.NODE_ENV === 'production') {
-        await logToExternalService('performance', data.performance)
-      }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // 관리자 권한 확인 (실제 구현에서는 사용자 역할 확인)
+    // 여기서는 간단히 특정 사용자 ID로 확인
+    const isAdmin = user.email?.endsWith('@admin.com') || false
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const url = new URL(request.url)
+    const timeRange = url.searchParams.get('timeRange') || '1h'
+    const type = url.searchParams.get('type') || 'all'
+
+    // 시간 범위 계산
+    const now = new Date()
+    let start: Date
+
+    switch (timeRange) {
+      case '1h':
+        start = new Date(now.getTime() - 60 * 60 * 1000)
+        break
+      case '24h':
+        start = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        break
+      case '7d':
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        break
+      case '30d':
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        break
+      default:
+        start = new Date(now.getTime() - 60 * 60 * 1000)
+    }
+
+    // 메트릭 타입에 따른 데이터 조회
+    if (type === 'dashboard') {
+      const dashboardData = await performanceMonitor.getDashboardData()
+      return NextResponse.json(dashboardData)
+    }
+
+    const metrics = await performanceMonitor.getMetrics({ start, end: now })
     
-    return NextResponse.json({ 
-      success: true, 
-      processed: {
-        errors: data.errors.length,
-        performance: data.performance.length
-      }
+    // 성능 임계값 확인
+    const thresholdCheck = await checkPerformanceThresholds()
+
+    return NextResponse.json({
+      metrics,
+      alerts: thresholdCheck.alerts,
+      timeRange: {
+        start: start.toISOString(),
+        end: now.toISOString()
+      },
+      timestamp: now.toISOString()
     })
-    
+
   } catch (error) {
-    console.error('Monitoring endpoint error:', error)
+    console.error('Monitoring API error:', error)
     return NextResponse.json(
-      { error: 'Failed to process monitoring data' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
 
-async function logToExternalService(type: 'errors' | 'performance', data: any[]) {
-  // Example integration with external logging service
-  // Replace with your preferred logging service
-  
+/**
+ * POST /api/monitoring - 수동 메트릭 기록
+ */
+export async function POST(request: NextRequest) {
   try {
-    // Example: Send to Datadog
-    if (process.env.DATADOG_API_KEY) {
-      await fetch('https://http-intake.logs.datadoghq.com/v1/input/' + process.env.DATADOG_API_KEY, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ddsource: 'science-paper-manager',
-          ddtags: `env:${process.env.NODE_ENV},type:${type}`,
-          hostname: 'vercel',
-          service: 'science-paper-manager',
-          message: JSON.stringify(data)
-        })
-      })
+    // 인증 확인
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    // Example: Send to custom webhook
-    if (process.env.MONITORING_WEBHOOK_URL) {
-      await fetch(process.env.MONITORING_WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.MONITORING_WEBHOOK_TOKEN}`
-        },
-        body: JSON.stringify({
-          type,
-          data,
-          timestamp: new Date().toISOString(),
-          source: 'science-paper-manager'
-        })
-      })
-    }
-    
-  } catch (error) {
-    console.error('Failed to send to external logging service:', error)
-  }
-}
 
-export async function GET() {
-  // Health check endpoint
-  return NextResponse.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0'
-  })
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { type, data } = body
+
+    switch (type) {
+      case 'user_activity':
+        await performanceMonitor.trackUserActivity(
+          user.id,
+          data.action,
+          data.feature,
+          data.metadata,
+          data.sessionId
+        )
+        break
+
+      case 'system_metric':
+        await performanceMonitor.trackSystemMetric(
+          data.metricType,
+          data.metricName,
+          data.value,
+          data.unit,
+          data.metadata
+        )
+        break
+
+      case 'custom_event':
+        await performanceMonitor.trackUserActivity(
+          user.id,
+          'custom_event',
+          data.eventName,
+          data.eventData
+        )
+        break
+
+      default:
+        return NextResponse.json(
+          { error: 'Invalid metric type' },
+          { status: 400 }
+        )
+    }
+
+    return NextResponse.json({ success: true })
+
+  } catch (error) {
+    console.error('Monitoring POST error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
 }

@@ -1,0 +1,27 @@
+# Development Docker image for Science Paper Manager
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache libc6-compat curl
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Create directories
+RUN mkdir -p /var/log /var/backups/science-paper-manager
+
+# Copy source code
+COPY . .
+
+# Expose ports
+EXPOSE 3000 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Default command (can be overridden)
+CMD ["npm", "run", "dev"]

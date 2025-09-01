@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom'
 
+// Import OpenAI shims for Node.js environment
+import 'openai/shims/node'
+
 // Polyfill for TextEncoder/TextDecoder needed by LangChain
 import { TextEncoder, TextDecoder } from 'util'
 global.TextEncoder = TextEncoder
@@ -58,3 +61,31 @@ global.fetch = jest.fn(() =>
     text: () => Promise.resolve(''),
   })
 )
+
+// Timeout helpers for async tests
+global.waitFor = (condition, timeout = 5000) => {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now()
+    const check = () => {
+      try {
+        if (condition()) {
+          resolve(true)
+        } else if (Date.now() - startTime > timeout) {
+          reject(new Error(`Timeout waiting for condition after ${timeout}ms`))
+        } else {
+          setTimeout(check, 100)
+        }
+      } catch (error) {
+        reject(error)
+      }
+    }
+    check()
+  })
+}
+
+global.waitForJobCompletion = (jobId, timeout = 30000) => {
+  return global.waitFor(() => {
+    // This would check job status in a real implementation
+    return true
+  }, timeout)
+}

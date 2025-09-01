@@ -1,328 +1,337 @@
 'use client'
 
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { useState, useCallback, useEffect } from 'react'
+import { Search, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { SearchFilters } from '@/types'
-import { useSearchStore } from '../../stores'
-import { Search, Filter, X, Loader2 } from 'lucide-react'
+import { AdvancedSearchFilters } from './AdvancedSearchFilters'
+import { SearchResults } from './SearchResults'
+import type { AdvancedSearchFilters as SearchFilters, SortOption, SearchResponse } from '@/services/search/AdvancedSearchService'
 
-export function SemanticSearchEnhanced() {
-  const [query, setQuery] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState<SearchFilters>({})
+interface SemanticSearchEnhancedProps {
+  placeholder?: string
+  className?: string
+  onResultsChange?: (results: SearchResponse) => void
+}
 
-  const {
-    searchResults,
-    isSearching,
-    error,
-    performSearch,
-    clearSearchResults,
-    clearError
-  } = useSearchStore()
+interface SearchState {
+  query: string
+  filters: SearchFilters
+  sortBy: SortOption
+  page: number
+  limit: number
+}
 
-  const handleSearch = async () => {
-    if (!query.trim()) return
-    await performSearch(query, filters)
-  }
+export function SemanticSearchEnhanced({ 
+  placeholder = "Search papers by title, content, authors, or journal...",
+  className = "",
+  onResultsChange
+}: SemanticSearchEnhancedProps) {
+  const [searchState, setSearchState] = useState<SearchState>({
+    query: '',
+    filters: {},
+    sortBy: 'relevance',
+    page: 1,
+    limit: 20
+  })
+  
+  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch()
+  // Debounced search suggestions
+  useEffect(() => {
+    if (searchState.query.length >= 2) {
+      const timeoutId = setTimeout(() => {
+        loadSuggestions(searchState.query)
+      }, 300)
+      return () => clearTimeout(timeoutId)
+    } else {
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }, [searchState.query])
+
+  const loadSuggestions = async (query: string) => {
+    try {
+      const response = await fetch(`/api/search?action=suggestions&q=${encodeURIComponent(query)}`)
+      if (response.ok) {
+        const { data } = await response.json()
+        setSuggestions(data)
+        setShowSuggestions(true)
+      }
+    } catch (error) {
+      console.error('Failed to load suggestions:', error)
     }
   }
 
-  const clearFilters = () => {
-    setFilters({})
-  }
+  const handleSearch = useCallback(async (resetPage = true) => {
+    if (!searchState.query.trim() && Object.keys(searchState.filters).length === 0) {
+      setSearchResults(null)
+      return
+    }
 
-  const clearAll = () => {
-    setQuery('')
-    setFilters({})
-    clearSearchResults()
-    clearError()
-  }
+    setIsSearching(true)
+    setShowSuggestions(false)
 
-  const activeFilterCount = Object.values(filters).filter(value => 
-    Array.isArray(value) ? value.length > 0 : value !== undefined
-  ).length
+    try {
+      const searchParams = {
+        query: searchState.query.trim() || undefined,
+        filters: searchState.filters,
+        sortBy: searchState.sortBy,
+        page: resetPage ? 1 : searchState.page,
+        limit: searchState.limit
+      }
+
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(searchParams)
+      })
+
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.status}`)
+      }
+
+      const { data } = await response.json()
+      setSearchResults(data)
+      
+      if (resetPage && searchState.page !== 1) {
+        setSearchState(prev => ({ ...prev, page: 1 }))
+      }
+
+      onResultsChange?.(data)
+
+    } catch (error) {
+      console.error('Search failed:', error)
+      setSearchResults(null)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [searchState, onResultsChange])
+
+  const handleQueryChange = useCallback((value: string) => {
+    setSearchState(prev => ({ ...prev, query: value }))
+  }, [])
+
+  const handleFiltersChange = useCallback((filters: SearchFilters) => {
+    setSearchState(prev => ({ ...prev, filters }))
+  }, [])
+
+  const handleSortChange = useCallback((sortBy: SortOption) => {
+    setSearchState(prev => ({ ...prev, sortBy }))
+  }, [])
+
+  const handleClearFilters = useCallback(() => {
+    setSearchState(prev => ({ ...prev, filters: {} }))
+  }, [])
+
+  const handlePageChange = useCallback((page: number) => {
+    setSearchState(prev => ({ ...prev, page }))
+  }, [])
+
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearching) {
+      handleSearch()
+    }
+  }, [handleSearch, isSearching])
+
+  const handleSuggestionClick = useCallback((suggestion: string) => {
+    setSearchState(prev => ({ ...prev, query: suggestion }))
+    setShowSuggestions(false)
+    // Trigger search with the suggestion
+    setTimeout(() => handleSearch(), 100)
+  }, [handleSearch])
+
+  // Auto-search when filters or sort change
+  useEffect(() => {
+    if (searchResults) {
+      handleSearch(true)
+    }
+  }, [searchState.filters, searchState.sortBy])
+
+  // Load more results when page changes
+  useEffect(() => {
+    if (searchResults && searchState.page > 1) {
+      handleSearch(false)
+    }
+  }, [searchState.page])
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="w-5 h-5" />
-            Semantic Search
-          </CardTitle>
-          <p className="text-sm text-gray-600">
-            Search your papers using natural language. Find papers by meaning, not just keywords.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Search Input */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                placeholder="What are you looking for? (e.g., 'papers about machine learning in healthcare')"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="pr-10"
-              />
-              {query && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setQuery('')}
-                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+    <div className={`space-y-6 ${className}`}>
+      {/* Search Input */}
+      <div className="relative">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              value={searchState.query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              onKeyPress={handleKeyPress}
+              onFocus={() => setShowSuggestions(suggestions.length > 0)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              placeholder={placeholder}
+              className="pl-10"
+              disabled={isSearching}
+            />
+          </div>
+          <Button
+            onClick={() => handleSearch()}
+            disabled={isSearching}
+            className="min-w-[100px]"
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              'Search'
+            )}
+          </Button>
+        </div>
+
+        {/* Search Suggestions */}
+        {showSuggestions && suggestions.length > 0 && (
+          <Card className="absolute top-full left-0 right-0 z-50 mt-1">
+            <CardContent className="p-2">
+              <div className="space-y-1">
+                {suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Advanced Filters */}
+      <AdvancedSearchFilters
+        filters={searchState.filters}
+        sortBy={searchState.sortBy}
+        onFiltersChange={handleFiltersChange}
+        onSortChange={handleSortChange}
+        onClearFilters={handleClearFilters}
+      />
+
+      {/* Search Results */}
+      {searchResults && (
+        <div className="space-y-4">
+          {/* Results Summary */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              {searchResults.totalResults > 0 ? (
+                <>
+                  Showing {((searchState.page - 1) * searchState.limit) + 1}-
+                  {Math.min(searchState.page * searchState.limit, searchResults.totalResults)} of{' '}
+                  {searchResults.totalResults} results
+                  {searchState.query && (
+                    <> for "<span className="font-medium">{searchState.query}</span>"</>
+                  )}
+                </>
+              ) : (
+                <>
+                  No results found
+                  {searchState.query && (
+                    <> for "<span className="font-medium">{searchState.query}</span>"</>
+                  )}
+                </>
               )}
             </div>
-            <Button
-              onClick={handleSearch}
-              disabled={!query.trim() || isSearching}
-            >
-              {isSearching ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Search className="w-4 h-4" />
-              )}
-            </Button>
-          </div>
-
-          {/* Filter Toggle */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2"
-            >
-              <Filter className="w-4 h-4" />
-              Filters
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-            {(query || activeFilterCount > 0 || searchResults.length > 0) && (
-              <Button variant="ghost" size="sm" onClick={clearAll}>
-                Clear All
-              </Button>
+            
+            {searchResults.suggestions && searchResults.suggestions.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Suggestions:</span>
+                <div className="flex gap-1">
+                  {searchResults.suggestions.slice(0, 3).map((suggestion, index) => (
+                    <Badge
+                      key={index}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-muted"
+                      onClick={() => handleSuggestionClick(suggestion)}
+                    >
+                      {suggestion}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Advanced Filters */}
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg bg-gray-50">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Reading Status</label>
-                <Select
-                  value={filters.readingStatus?.[0] || ''}
-                  onValueChange={(value) => 
-                    setFilters(prev => ({
-                      ...prev,
-                      readingStatus: value ? [value] : undefined
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Any status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Any status</SelectItem>
-                    <SelectItem value="unread">Unread</SelectItem>
-                    <SelectItem value="reading">Reading</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
+          {/* Results List */}
+          <SearchResults
+            results={searchResults.results}
+            query={searchState.query}
+            isLoading={isSearching}
+            onLoadMore={
+              searchResults.currentPage < searchResults.totalPages
+                ? () => handlePageChange(searchState.page + 1)
+                : undefined
+            }
+          />
+
+          {/* Pagination */}
+          {searchResults.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(Math.max(1, searchState.page - 1))}
+                disabled={searchState.page <= 1 || isSearching}
+              >
+                Previous
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, searchResults.totalPages) }, (_, i) => {
+                  const pageNum = Math.max(1, searchState.page - 2) + i
+                  if (pageNum > searchResults.totalPages) return null
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pageNum === searchState.page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(pageNum)}
+                      disabled={isSearching}
+                      className="w-8 h-8 p-0"
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
               </div>
 
-              <div>
-                <label className="text-sm font-medium mb-2 block">Min Publication Year</label>
-                <Input
-                  type="number"
-                  placeholder="e.g., 2020"
-                  value={filters.publicationYear?.min || ''}
-                  onChange={(e) => 
-                    setFilters(prev => ({
-                      ...prev,
-                      publicationYear: {
-                        ...prev.publicationYear,
-                        min: e.target.value ? parseInt(e.target.value) : undefined
-                      }
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Max Publication Year</label>
-                <Input
-                  type="number"
-                  placeholder="e.g., 2024"
-                  value={filters.publicationYear?.max || ''}
-                  onChange={(e) => 
-                    setFilters(prev => ({
-                      ...prev,
-                      publicationYear: {
-                        ...prev.publicationYear,
-                        max: e.target.value ? parseInt(e.target.value) : undefined
-                      }
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Min Rating</label>
-                <Select
-                  value={filters.rating?.min?.toString() || ''}
-                  onValueChange={(value) => 
-                    setFilters(prev => ({
-                      ...prev,
-                      rating: {
-                        ...prev.rating,
-                        min: value ? parseInt(value) : undefined
-                      }
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Any rating" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Any rating</SelectItem>
-                    <SelectItem value="1">1+ stars</SelectItem>
-                    <SelectItem value="2">2+ stars</SelectItem>
-                    <SelectItem value="3">3+ stars</SelectItem>
-                    <SelectItem value="4">4+ stars</SelectItem>
-                    <SelectItem value="5">5 stars</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium mb-2 block">Tags (comma-separated)</label>
-                <Input
-                  placeholder="e.g., important, research, review"
-                  value={filters.tags?.join(', ') || ''}
-                  onChange={(e) => 
-                    setFilters(prev => ({
-                      ...prev,
-                      tags: e.target.value ? e.target.value.split(',').map(tag => tag.trim()) : undefined
-                    }))
-                  }
-                />
-              </div>
-
-              {activeFilterCount > 0 && (
-                <div className="flex items-end">
-                  <Button variant="outline" onClick={clearFilters} className="w-full">
-                    Clear Filters
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Error Display */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="text-red-800">
-                <strong>Search Error:</strong> {error}
-              </div>
-              <Button variant="ghost" size="sm" onClick={clearError}>
-                <X className="w-4 h-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(Math.min(searchResults.totalPages, searchState.page + 1))}
+                disabled={searchState.page >= searchResults.totalPages || isSearching}
+              >
+                Next
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Search Results */}
-      {searchResults.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Search Results</span>
-              <Badge variant="outline">
-                {searchResults.length} found
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {searchResults.map((result) => (
-                <div
-                  key={result.id}
-                  className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg mb-2">
-                        {result.paper.title}
-                      </h3>
-                      <div className="text-sm text-gray-600 mb-2">
-                        {result.paper.authors.join(', ')}
-                        {result.paper.journal && ` • ${result.paper.journal}`}
-                        {result.paper.publicationYear && ` • ${result.paper.publicationYear}`}
-                      </div>
-                      {result.relevantExcerpts.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium text-gray-700">
-                            Relevant excerpts:
-                          </div>
-                          {result.relevantExcerpts.map((excerpt, index) => (
-                            <div
-                              key={index}
-                              className="text-sm bg-yellow-50 border-l-4 border-yellow-200 pl-3 py-2"
-                            >
-                              "{excerpt}"
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge variant="secondary">
-                        {(result.similarity * 100).toFixed(1)}% match
-                      </Badge>
-                      <Badge variant="outline">
-                        {result.paper.readingStatus}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       )}
 
       {/* Empty State */}
-      {!isSearching && !error && searchResults.length === 0 && query && (
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="text-gray-500 mb-4">
-              No papers found matching your search query.
-            </div>
-            <p className="text-sm text-gray-400">
-              Try using different keywords or adjusting your filters.
-            </p>
-          </CardContent>
-        </Card>
+      {!searchResults && !isSearching && (
+        <div className="text-center py-12 text-muted-foreground">
+          <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>Enter a search query or apply filters to find papers</p>
+        </div>
       )}
     </div>
   )

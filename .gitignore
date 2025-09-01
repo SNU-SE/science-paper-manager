@@ -76,3 +76,28 @@ node_modules/
 
 # Optional eslint cache
 .eslintcache
+
+# Docker
+docker-compose.override.yml
+
+# Production environment files
+.env.production.local
+
+# Application data directories
+/backups/
+/temp/
+/uploads/
+
+# SSL certificates
+config/ssl/
+
+# Log files
+/var/log/
+alerts.log
+
+# Backup files
+*.backup
+*.bak
+
+# Cache
+.cache/

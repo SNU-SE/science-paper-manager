@@ -256,4 +256,13 @@ export class ZoteroService {
   }
 }
 
-export const zoteroService = new ZoteroService()
+let zoteroServiceInstance: ZoteroService | null = null
+
+export function getZoteroService(): ZoteroService {
+  if (!zoteroServiceInstance) {
+    zoteroServiceInstance = new ZoteroService()
+  }
+  return zoteroServiceInstance
+}
+
+export const zoteroService = getZoteroService

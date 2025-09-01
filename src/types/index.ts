@@ -82,6 +82,9 @@ export interface SearchFilters {
   publicationYear?: { min?: number; max?: number }
   tags?: string[]
   rating?: { min?: number; max?: number }
+  journals?: string[]
+  authors?: string[]
+  dateRange?: { start: Date; end: Date }
 }
 
 export interface UsageStats {

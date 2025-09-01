@@ -1,5 +1,5 @@
 import { Paper } from '@/types'
-import { ZoteroService, ZoteroSyncResult, ZoteroItem } from './ZoteroService'
+import { ZoteroService, ZoteroSyncResult, ZoteroItem, getZoteroService } from './ZoteroService'
 import { getSupabaseClient } from '@/lib/database'
 
 export interface SyncStatus {
@@ -322,4 +322,13 @@ export class ZoteroSyncService {
   }
 }
 
-export const zoteroSyncService = new ZoteroSyncService(new ZoteroService())
+let zoteroSyncServiceInstance: ZoteroSyncService | null = null
+
+export function getZoteroSyncService(): ZoteroSyncService {
+  if (!zoteroSyncServiceInstance) {
+    zoteroSyncServiceInstance = new ZoteroSyncService(getZoteroService())
+  }
+  return zoteroSyncServiceInstance
+}
+
+export const zoteroSyncService = getZoteroSyncService

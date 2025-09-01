@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import type { SearchResult } from '@/types'
+import type { SearchResult } from '@/services/search/AdvancedSearchService'
 
 interface SearchResultsProps {
   results: SearchResult[]
-  onPaperSelect: (paperId: string) => void
+  onPaperSelect?: (paperId: string) => void
+  onLoadMore?: () => void
   isLoading?: boolean
   query?: string
   className?: string
@@ -115,16 +116,16 @@ function SearchResultCard({
   query = "" 
 }: { 
   result: SearchResult
-  onSelect: (paperId: string) => void
+  onSelect?: (paperId: string) => void
   query?: string 
 }) {
   const [showAllExcerpts, setShowAllExcerpts] = useState(false)
   
-  const { paper, similarity, relevantExcerpts } = result
+  const { paper, similarity, relevantExcerpts, matchedFields } = result
   const displayExcerpts = showAllExcerpts ? relevantExcerpts : relevantExcerpts.slice(0, 2)
 
   const handleCardClick = () => {
-    onSelect(paper.id)
+    onSelect?.(paper.id)
   }
 
   const handleExternalLinkClick = (e: React.MouseEvent) => {
@@ -132,6 +133,21 @@ function SearchResultCard({
     if (paper.googleDriveUrl) {
       window.open(paper.googleDriveUrl, '_blank')
     }
+  }
+
+  // Show matched fields as badges
+  const renderMatchedFields = () => {
+    if (!matchedFields || matchedFields.length === 0) return null
+    
+    return (
+      <div className="flex flex-wrap gap-1 mt-2">
+        {matchedFields.map(field => (
+          <Badge key={field} variant="outline" className="text-xs">
+            {field}
+          </Badge>
+        ))}
+      </div>
+    )
   }
 
   return (
@@ -176,6 +192,8 @@ function SearchResultCard({
                 </div>
               )}
             </div>
+            
+            {renderMatchedFields()}
           </div>
           
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
@@ -188,6 +206,7 @@ function SearchResultCard({
                   size="sm"
                   onClick={handleExternalLinkClick}
                   className="h-8 w-8 p-0"
+                  title="Open in Google Drive"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </Button>
@@ -244,6 +263,7 @@ function SearchResultCard({
 export function SearchResults({ 
   results, 
   onPaperSelect, 
+  onLoadMore,
   isLoading = false, 
   query = "",
   className = ""
@@ -326,12 +346,24 @@ export function SearchResults({
         ))}
       </div>
 
-      {/* Load More / Pagination could go here */}
-      {results.length >= 10 && (
+      {/* Load More Button */}
+      {onLoadMore && (
         <div className="text-center py-4">
-          <p className="text-sm text-muted-foreground">
-            Showing top {results.length} results. Refine your search for more specific results.
-          </p>
+          <Button
+            variant="outline"
+            onClick={onLoadMore}
+            disabled={isLoading}
+            className="min-w-[120px]"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                Loading...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </Button>
         </div>
       )}
     </div>

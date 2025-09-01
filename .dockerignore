@@ -1,0 +1,70 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Next.js
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+coverage/
+.nyc_output
+test-results/
+playwright-report/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Build artifacts
+dist/
+build/
+
+# Development files
+docker-compose.dev.yml
+docker-compose.override.yml
+Dockerfile.dev
+
+# Backup and data directories
+backups/
+data/
+
+# Scripts (except production ones)
+scripts/setup-dev.sh
+scripts/health-check.sh
+scripts/monitor.sh
+
+# Configuration files that shouldn't be in container
+config/nginx.conf
+config/redis.conf
