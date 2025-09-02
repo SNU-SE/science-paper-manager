@@ -110,30 +110,15 @@ export async function POST(request: NextRequest) {
         rootFolderId
       )
 
-      // Get OAuth access token
-      // Using google auth client via driveService's internal auth is not directly exposed; recreate here
-      const { google } = await import('googleapis')
-      const oauth2 = new google.auth.OAuth2()
-      // Reuse credentials from service
-      // Note: We cannot read refresh token back from driveService; recreate from settings above
-      // We already know settings were valid; use the same path as creation above to build oauth client
-      // For simplicity, regenerate using same settings branch
-      let token: string | null = null
-      try {
-        // This path will only work when using env fallback; for per-user we need to mint via request headers
-        // Safer approach: getRequestHeaders via driveService internal auth not available; instead, call google.auth.
-        // We'll build oauth client same as in service creation above.
-        // Recreate oauth with same credentials
-        // We already have a working driveService; use google drive client to getHeaders
-        // @ts-ignore accessing private
-        const auth: any = (driveService as any).auth || (driveService as any).drive?.options?.auth
-        if (auth && typeof auth.getAccessToken === 'function') {
-          const t = await auth.getAccessToken()
-          token = typeof t === 'string' ? t : t?.token || null
-        }
-      } catch {}
-
-      if (!token) {
+      // Get OAuth Authorization header from the drive service's auth client
+      // @ts-ignore private field access at runtime
+      const authClient: any = (driveService as any).auth || (driveService as any).drive?.options?.auth
+      if (!authClient || typeof authClient.getRequestHeaders !== 'function') {
+        return NextResponse.json({ error: 'Auth client unavailable' }, { status: 500 })
+      }
+      const reqHeaders = await authClient.getRequestHeaders()
+      const authorization = (reqHeaders['Authorization'] || reqHeaders['authorization']) as string | undefined
+      if (!authorization) {
         return NextResponse.json({ error: 'Failed to acquire access token' }, { status: 500 })
       }
 
@@ -147,7 +132,7 @@ export async function POST(request: NextRequest) {
       const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,webContentLink', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': authorization,
           'Content-Type': 'application/json; charset=UTF-8',
           'X-Upload-Content-Type': 'application/pdf',
           ...(totalSize ? { 'X-Upload-Content-Length': String(totalSize) } : {})
@@ -179,9 +164,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing uploadUrl or chunk' }, { status: 400 })
       }
 
+      // Reuse auth header for chunk upload
+      // @ts-ignore private field access at runtime
+      const authClient2: any = (driveService as any).auth || (driveService as any).drive?.options?.auth
+      const reqHeaders2 = authClient2 && typeof authClient2.getRequestHeaders === 'function' ? await authClient2.getRequestHeaders() : {}
+      const authorization2 = (reqHeaders2['Authorization'] || reqHeaders2['authorization']) as string | undefined
+
       const putRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: {
+          ...(authorization2 ? { 'Authorization': authorization2 } : {}),
           'Content-Length': String(chunk.size),
           'Content-Range': `bytes ${chunkStart}-${chunkEnd}/${totalSize}`,
           'Content-Type': 'application/pdf'
