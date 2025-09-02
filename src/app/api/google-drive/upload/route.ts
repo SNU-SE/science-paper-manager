@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     // Prefer per-user Google Drive settings if provided
     let driveService: GoogleDriveService
     let rootFolderId: string | undefined = undefined
+    let oauthCreds: { clientId: string; clientSecret: string; redirectUri: string; refreshToken: string } | null = null
 
     if (userId) {
       try {
@@ -64,12 +65,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        driveService = new GoogleDriveService({
+        oauthCreds = {
           clientId: settings.client_id,
           clientSecret: settings.client_secret,
           redirectUri: settings.redirect_uri,
-          refreshToken: settings.refresh_token || undefined,
-        })
+          refreshToken: settings.refresh_token,
+        }
+        driveService = new GoogleDriveService(oauthCreds)
         rootFolderId = settings.root_folder_id || undefined
       } catch (err) {
         console.error('Failed to load user Google Drive settings:', err)
@@ -88,12 +90,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      driveService = new GoogleDriveService({
-        clientId: process.env.GOOGLE_DRIVE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET,
-        redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI,
-        refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN
-      })
+      oauthCreds = {
+        clientId: process.env.GOOGLE_DRIVE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_DRIVE_CLIENT_SECRET!,
+        redirectUri: process.env.GOOGLE_DRIVE_REDIRECT_URI!,
+        refreshToken: process.env.GOOGLE_DRIVE_REFRESH_TOKEN!,
+      }
+      driveService = new GoogleDriveService(oauthCreds)
       rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID
     }
 
@@ -110,17 +113,20 @@ export async function POST(request: NextRequest) {
         rootFolderId
       )
 
-      // Get OAuth Authorization header from the drive service's auth client
-      // @ts-ignore private field access at runtime
-      const authClient: any = (driveService as any).auth || (driveService as any).drive?.options?.auth
-      if (!authClient || typeof authClient.getRequestHeaders !== 'function') {
-        return NextResponse.json({ error: 'Auth client unavailable' }, { status: 500 })
-      }
-      const reqHeaders = await authClient.getRequestHeaders()
-      const authorization = (reqHeaders['Authorization'] || reqHeaders['authorization']) as string | undefined
-      if (!authorization) {
-        return NextResponse.json({ error: 'Failed to acquire access token' }, { status: 500 })
-      }
+      // Build OAuth client and get Authorization header
+      try {
+        const { google } = await import('googleapis')
+        const oauth2 = new google.auth.OAuth2(
+          oauthCreds!.clientId,
+          oauthCreds!.clientSecret,
+          oauthCreds!.redirectUri,
+        )
+        oauth2.setCredentials({ refresh_token: oauthCreds!.refreshToken })
+        const reqHeaders = await oauth2.getRequestHeaders()
+        const authorization = (reqHeaders['Authorization'] || reqHeaders['authorization']) as string | undefined
+        if (!authorization) {
+          return NextResponse.json({ error: 'Failed to acquire access token' }, { status: 500 })
+        }
 
       // Initiate resumable session
       const meta = {
@@ -129,28 +135,32 @@ export async function POST(request: NextRequest) {
         mimeType: 'application/pdf'
       }
 
-      const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,webContentLink', {
-        method: 'POST',
-        headers: {
-          'Authorization': authorization,
-          'Content-Type': 'application/json; charset=UTF-8',
-          'X-Upload-Content-Type': 'application/pdf',
-          ...(totalSize ? { 'X-Upload-Content-Length': String(totalSize) } : {})
-        },
-        body: JSON.stringify(meta)
-      })
+        const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,webContentLink', {
+          method: 'POST',
+          headers: {
+            'Authorization': authorization,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type': 'application/pdf',
+            ...(totalSize ? { 'X-Upload-Content-Length': String(totalSize) } : {})
+          },
+          body: JSON.stringify(meta)
+        })
 
       if (!initRes.ok) {
         const text = await initRes.text()
         return NextResponse.json({ error: 'Failed to start resumable upload', details: text }, { status: 500 })
       }
 
-      const uploadUrl = initRes.headers.get('location')
+        const uploadUrl = initRes.headers.get('location')
       if (!uploadUrl) {
         return NextResponse.json({ error: 'Missing upload URL' }, { status: 500 })
       }
 
-      return NextResponse.json({ uploadUrl, folderPath: `${year}/${journal}/${paperTitle}` })
+        return NextResponse.json({ uploadUrl, folderPath: `${year}/${journal}/${paperTitle}` })
+      } catch (e) {
+        console.error('Resumable start error:', e)
+        return NextResponse.json({ error: 'Failed to start resumable upload', details: String(e) }, { status: 500 })
+      }
     }
 
     if (action === 'chunk') {
@@ -164,22 +174,27 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing uploadUrl or chunk' }, { status: 400 })
       }
 
-      // Reuse auth header for chunk upload
-      // @ts-ignore private field access at runtime
-      const authClient2: any = (driveService as any).auth || (driveService as any).drive?.options?.auth
-      const reqHeaders2 = authClient2 && typeof authClient2.getRequestHeaders === 'function' ? await authClient2.getRequestHeaders() : {}
-      const authorization2 = (reqHeaders2['Authorization'] || reqHeaders2['authorization']) as string | undefined
+      try {
+        const { google } = await import('googleapis')
+        const oauth2 = new google.auth.OAuth2(
+          oauthCreds!.clientId,
+          oauthCreds!.clientSecret,
+          oauthCreds!.redirectUri,
+        )
+        oauth2.setCredentials({ refresh_token: oauthCreds!.refreshToken })
+        const reqHeaders2 = await oauth2.getRequestHeaders()
+        const authorization2 = (reqHeaders2['Authorization'] || reqHeaders2['authorization']) as string | undefined
 
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          ...(authorization2 ? { 'Authorization': authorization2 } : {}),
-          'Content-Length': String(chunk.size),
-          'Content-Range': `bytes ${chunkStart}-${chunkEnd}/${totalSize}`,
-          'Content-Type': 'application/pdf'
-        },
-        body: Buffer.from(await chunk.arrayBuffer())
-      })
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            ...(authorization2 ? { 'Authorization': authorization2 } : {}),
+            'Content-Length': String(chunk.size),
+            'Content-Range': `bytes ${chunkStart}-${chunkEnd}/${totalSize}`,
+            'Content-Type': 'application/pdf'
+          },
+          body: Buffer.from(await chunk.arrayBuffer())
+        })
 
       if (putRes.status === 308) {
         const range = putRes.headers.get('range')
@@ -189,14 +204,18 @@ export async function POST(request: NextRequest) {
         const text = await putRes.text()
         return NextResponse.json({ error: 'Chunk upload failed', details: text }, { status: 500 })
       }
-      const data = await putRes.json()
-      return NextResponse.json({
-        fileId: data.id,
-        fileName: data.name,
-        webViewLink: data.webViewLink,
-        webContentLink: data.webContentLink,
-        folderPath: `${year}/${journal}/${paperTitle}`
-      })
+        const data = await putRes.json()
+        return NextResponse.json({
+          fileId: data.id,
+          fileName: data.name,
+          webViewLink: data.webViewLink,
+          webContentLink: data.webContentLink,
+          folderPath: `${year}/${journal}/${paperTitle}`
+        })
+      } catch (e) {
+        console.error('Resumable chunk error:', e)
+        return NextResponse.json({ error: 'Chunk upload failed', details: String(e) }, { status: 500 })
+      }
     }
 
     // Default: direct small-file upload (may hit platform limits)
