@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PaperUploadService, PaperUploadData, UploadProgress } from '@/services/upload/PaperUploadService';
 import { Paper, AIModel } from '@/types';
+import { UserApiKeyService } from '@/services/settings/UserApiKeyService';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AIModelSelector } from '@/components/ai/AIModelSelector';
 import { useAIAnalysis } from '@/hooks/useAIAnalysis';
@@ -85,6 +86,7 @@ function PaperUploadComponent({
   const [enableBatchAnalysis, setEnableBatchAnalysis] = useState(true);
   const [enableAutoFill, setEnableAutoFill] = useState(true);
   const [selectedModels, setSelectedModels] = useState<AIModel[]>(['openai']);
+  const [hasDbOpenAIKey, setHasDbOpenAIKey] = useState(false);
   const [batchState, setBatchState] = useState<BatchOperationState>({
     isRunning: false,
     isPaused: false,
@@ -101,6 +103,20 @@ function PaperUploadComponent({
   const { startAnalysis, apiKeys, hasValidApiKey } = useAIAnalysis();
   const { showError, showSuccess, showWarning } = useErrorToast();
   const { user, session } = useAuth() as any;
+
+  // Check DB-stored OpenAI key (for auto-fill gating)
+  React.useEffect(() => {
+    (async () => {
+      if (!user?.id) return;
+      try {
+        const service = new UserApiKeyService();
+        const key = await service.getApiKey(user.id, 'openai');
+        setHasDbOpenAIKey(!!key);
+      } catch {
+        setHasDbOpenAIKey(false);
+      }
+    })();
+  }, [user?.id]);
   
   // Retry mechanism for upload operations
   const uploadRetry = useRetry(
@@ -155,13 +171,24 @@ function PaperUploadComponent({
 
     setFiles(prev => [...prev, ...filesWithMetadata]);
 
-    if (enableAutoFill && hasValidApiKey('openai')) {
+    if (enableAutoFill && (hasValidApiKey('openai') || hasDbOpenAIKey)) {
       filesWithMetadata.forEach((f) => {
         (async () => {
           try {
             const form = new FormData();
             form.append('file', f.file);
-            form.append('openaiApiKey', apiKeys.openai);
+            // Prefer key from useAIAnalysis; fallback to DB-stored key
+            let openaiKey = apiKeys.openai as string | undefined;
+            if (!openaiKey && user?.id) {
+              try {
+                const service = new UserApiKeyService();
+                const k = await service.getApiKey(user.id, 'openai');
+                if (k) openaiKey = k;
+              } catch {}
+            }
+            if (openaiKey) {
+              form.append('openaiApiKey', openaiKey);
+            }
             const res = await fetch('/api/metadata/extract', { method: 'POST', body: form });
             if (res.ok) {
               const meta = await res.json();
@@ -190,7 +217,7 @@ function PaperUploadComponent({
         })();
       });
     }
-  }, [enableAutoFill, hasValidApiKey, apiKeys.openai]);
+  }, [enableAutoFill, hasValidApiKey, hasDbOpenAIKey, apiKeys.openai, user?.id]);
 
   // Remove file from list
   const removeFile = useCallback((id: string) => {
@@ -330,7 +357,20 @@ function PaperUploadComponent({
               'Content-Type': 'application/json',
               ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
             },
-            body: JSON.stringify(result.paper)
+            body: JSON.stringify({
+              // Ensure required title
+              title: result.paper.title || file.title || file.file.name.replace(/\.pdf$/i, ''),
+              authors: result.paper.authors || [],
+              journal: result.paper.journal,
+              publicationYear: result.paper.publicationYear,
+              doi: result.paper.doi,
+              abstract: result.paper.abstract,
+              googleDriveId: result.paper.googleDriveId,
+              googleDriveUrl: result.paper.googleDriveUrl,
+              pdfPath: result.paper.pdfPath,
+              readingStatus: result.paper.readingStatus || 'unread',
+              dateAdded: result.paper.dateAdded || new Date(),
+            })
           })
           if (savedRes.ok) {
             const savedPaper = await savedRes.json()
@@ -623,11 +663,11 @@ function PaperUploadComponent({
               <Label htmlFor="auto-fill" className="text-sm">AI Auto-fill metadata</Label>
               <Switch
                 id="auto-fill"
-                checked={enableAutoFill && hasValidApiKey('openai')}
+                checked={enableAutoFill && (hasValidApiKey('openai') || hasDbOpenAIKey)}
                 onCheckedChange={setEnableAutoFill}
-                disabled={!hasValidApiKey('openai')}
+                disabled={!(hasValidApiKey('openai') || hasDbOpenAIKey)}
               />
-              {!hasValidApiKey('openai') && (
+              {!(hasValidApiKey('openai') || hasDbOpenAIKey)) && (
                 <span className="text-xs text-gray-500">Requires OpenAI API key</span>
               )}
             </div>
