@@ -48,6 +48,8 @@ interface FileWithMetadata extends PaperUploadData {
   isAnalyzed?: boolean;
   error?: string;
   retryCount?: number;
+  metadataFilling?: boolean;
+  metadataAutoFilled?: boolean;
 }
 
 interface BatchAnalysisProgress {
@@ -80,6 +82,7 @@ function PaperUploadComponent({
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [enableBatchAnalysis, setEnableBatchAnalysis] = useState(true);
+  const [enableAutoFill, setEnableAutoFill] = useState(true);
   const [selectedModels, setSelectedModels] = useState<AIModel[]>(['openai']);
   const [batchState, setBatchState] = useState<BatchOperationState>({
     isRunning: false,
@@ -93,6 +96,7 @@ function PaperUploadComponent({
   const [retryDelay, setRetryDelay] = useState(5000); // 5 seconds
   
   const abortControllerRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { startAnalysis, apiKeys, hasValidApiKey } = useAIAnalysis();
   const { showError, showSuccess, showWarning } = useErrorToast();
   
@@ -134,18 +138,57 @@ function PaperUploadComponent({
 
   // Add files to the list
   const addFiles = useCallback((newFiles: File[]) => {
-    const filesWithMetadata: FileWithMetadata[] = newFiles.map(file => ({
-      id: `${file.name}-${Date.now()}-${Math.random()}`,
+    const now = Date.now();
+    const filesWithMetadata: FileWithMetadata[] = newFiles.map((file, idx) => ({
+      id: `${file.name}-${now}-${idx}-${Math.random()}`,
       file,
-      title: file.name.replace('.pdf', ''),
+      title: file.name.replace(/\.pdf$/i, ''),
       authors: [],
       journal: '',
       publicationYear: new Date().getFullYear(),
-      abstract: ''
+      abstract: '',
+      metadataFilling: enableAutoFill && hasValidApiKey('openai') ? true : false,
+      metadataAutoFilled: false
     }));
 
     setFiles(prev => [...prev, ...filesWithMetadata]);
-  }, []);
+
+    if (enableAutoFill && hasValidApiKey('openai')) {
+      filesWithMetadata.forEach((f) => {
+        (async () => {
+          try {
+            const form = new FormData();
+            form.append('file', f.file);
+            form.append('openaiApiKey', apiKeys.openai);
+            const res = await fetch('/api/metadata/extract', { method: 'POST', body: form });
+            if (res.ok) {
+              const meta = await res.json();
+              setFiles(prev => prev.map(existing => existing.id === f.id ? ({
+                ...existing,
+                title: meta.title || existing.title,
+                authors: Array.isArray(meta.authors) ? meta.authors : existing.authors,
+                publicationYear: meta.publicationYear || existing.publicationYear,
+                journal: meta.journal || existing.journal,
+                doi: meta.doi || existing.doi,
+                metadataFilling: false,
+                metadataAutoFilled: true
+              }) : existing));
+            } else {
+              setFiles(prev => prev.map(existing => existing.id === f.id ? ({
+                ...existing,
+                metadataFilling: false
+              }) : existing));
+            }
+          } catch (e) {
+            setFiles(prev => prev.map(existing => existing.id === f.id ? ({
+              ...existing,
+              metadataFilling: false
+            }) : existing));
+          }
+        })();
+      });
+    }
+  }, [enableAutoFill, hasValidApiKey, apiKeys.openai]);
 
   // Remove file from list
   const removeFile = useCallback((id: string) => {
@@ -538,15 +581,32 @@ function PaperUploadComponent({
               accept=".pdf"
               multiple
               onChange={handleFileInput}
+              // Keep the input hidden visually but accessible via ref click
               className="hidden"
               id="file-upload"
+              ref={fileInputRef}
             />
-            <Label htmlFor="file-upload">
-              <Button variant="outline" className="cursor-pointer">
-                <Plus className="h-4 w-4 mr-2" />
-                Select Files
-              </Button>
-            </Label>
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Select Files
+            </Button>
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <Label htmlFor="auto-fill" className="text-sm">AI Auto-fill metadata</Label>
+              <Switch
+                id="auto-fill"
+                checked={enableAutoFill && hasValidApiKey('openai')}
+                onCheckedChange={setEnableAutoFill}
+                disabled={!hasValidApiKey('openai')}
+              />
+              {!hasValidApiKey('openai') && (
+                <span className="text-xs text-gray-500">Requires OpenAI API key</span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
