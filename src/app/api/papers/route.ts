@@ -1,63 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { Paper } from '@/types'
 
-// Mock data for demonstration - in real app this would come from database
-const mockPapers: Paper[] = [
-  {
-    id: '1',
-    title: 'Deep Learning for Natural Language Processing: A Comprehensive Survey',
-    authors: ['John Smith', 'Jane Doe'],
-    journal: 'Nature Machine Intelligence',
-    publicationYear: 2024,
-    doi: '10.1038/s42256-024-00001-1',
-    abstract: 'This paper provides a comprehensive survey of deep learning techniques for natural language processing...',
-    readingStatus: 'completed',
-    dateAdded: new Date('2024-01-15'),
-    dateRead: new Date('2024-01-20'),
-    lastModified: new Date('2024-01-20')
-  },
-  {
-    id: '2',
-    title: 'Transformer Architecture Improvements for Large Language Models',
-    authors: ['Alice Johnson', 'Bob Wilson'],
-    journal: 'Journal of Machine Learning Research',
-    publicationYear: 2024,
-    abstract: 'We propose several improvements to the transformer architecture that enhance performance...',
-    readingStatus: 'reading',
-    dateAdded: new Date('2024-02-01'),
-    lastModified: new Date('2024-02-05')
-  },
-  {
-    id: '3',
-    title: 'Ethical Considerations in AI Development',
-    authors: ['Carol Brown', 'David Lee'],
-    journal: 'AI Ethics',
-    publicationYear: 2023,
-    abstract: 'This paper discusses the ethical implications of artificial intelligence development...',
-    readingStatus: 'unread',
-    dateAdded: new Date('2024-02-10'),
-    lastModified: new Date('2024-02-10')
+export const runtime = 'nodejs'
+
+function getSupabaseForRequest(request: NextRequest) {
+  try {
+    const admin = createServerSupabaseClient()
+    if (admin) return admin
+  } catch {}
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anon) {
+    throw new Error('Supabase is not configured')
   }
-]
+  const authHeader = request.headers.get('authorization')
+  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined
+  return createClient(url, anon, {
+    global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
+    const supabase = getSupabaseForRequest(request)
 
     if (id) {
-      // Get single paper
-      const paper = mockPapers.find(p => p.id === id)
-      if (!paper) {
-        return NextResponse.json(
-          { error: 'Paper not found' },
-          { status: 404 }
-        )
-      }
-      return NextResponse.json(paper)
+      const { data, error } = await supabase
+        .from('papers')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (error && (error as any).code !== 'PGRST116') throw error
+      if (!data) return NextResponse.json({ error: 'Paper not found' }, { status: 404 })
+      return NextResponse.json(data)
     } else {
-      // Get all papers
-      return NextResponse.json(mockPapers)
+      const { data, error } = await supabase
+        .from('papers')
+        .select('*')
+        .order('date_added', { ascending: false })
+      if (error) throw error
+      return NextResponse.json(data || [])
     }
   } catch (error) {
     console.error('Error in GET /api/papers:', error)
@@ -73,35 +60,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const paper: Partial<Paper> = body
 
-    // Validate required fields
     if (!paper.title) {
-      return NextResponse.json(
-        { error: 'Title is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
-    // In real app, this would save to database
-    const newPaper: Paper = {
-      id: Date.now().toString(),
-      title: paper.title,
-      authors: paper.authors || [],
-      journal: paper.journal,
-      publicationYear: paper.publicationYear,
-      doi: paper.doi,
-      abstract: paper.abstract,
-      zoteroKey: paper.zoteroKey,
-      googleDriveId: paper.googleDriveId,
-      googleDriveUrl: paper.googleDriveUrl,
-      pdfPath: paper.pdfPath,
-      readingStatus: paper.readingStatus || 'unread',
-      dateAdded: new Date(),
-      dateRead: paper.dateRead,
-      lastModified: new Date()
-    }
-
-    mockPapers.push(newPaper)
-    return NextResponse.json(newPaper)
+    const supabase = getSupabaseForRequest(request)
+    const { data, error } = await supabase
+      .from('papers')
+      .insert({
+        title: paper.title,
+        authors: paper.authors || [],
+        journal: paper.journal || null,
+        publication_year: paper.publicationYear || null,
+        doi: paper.doi || null,
+        abstract: paper.abstract || null,
+        google_drive_id: paper.googleDriveId || null,
+        google_drive_url: paper.googleDriveUrl || null,
+        pdf_path: paper.pdfPath || null,
+        reading_status: paper.readingStatus || 'unread',
+        date_added: (paper.dateAdded ? new Date(paper.dateAdded) : new Date()).toISOString(),
+        last_modified: new Date().toISOString()
+      })
+      .select()
+      .single()
+    if (error) throw error
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error in POST /api/papers:', error)
     return NextResponse.json(
@@ -116,32 +99,26 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const { id, ...updates }: Partial<Paper> & { id: string } = body
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Paper ID is required' },
-        { status: 400 }
-      )
-    }
+    if (!id) return NextResponse.json({ error: 'Paper ID is required' }, { status: 400 })
 
-    // Find paper index
-    const paperIndex = mockPapers.findIndex(p => p.id === id)
-    if (paperIndex === -1) {
-      return NextResponse.json(
-        { error: 'Paper not found' },
-        { status: 404 }
-      )
-    }
-
-    // Update paper
-    const updatedPaper: Paper = {
-      ...mockPapers[paperIndex],
-      ...updates,
-      id, // Ensure ID doesn't change
-      lastModified: new Date()
-    }
-
-    mockPapers[paperIndex] = updatedPaper
-    return NextResponse.json(updatedPaper)
+    const supabase = getSupabaseForRequest(request)
+    const { data, error } = await supabase
+      .from('papers')
+      .update({
+        title: updates.title,
+        authors: updates.authors,
+        journal: updates.journal,
+        publication_year: updates.publicationYear,
+        doi: updates.doi,
+        abstract: updates.abstract,
+        reading_status: updates.readingStatus,
+        last_modified: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error in PUT /api/papers:', error)
     return NextResponse.json(
@@ -156,28 +133,15 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Paper ID is required' },
-        { status: 400 }
-      )
-    }
+    if (!id) return NextResponse.json({ error: 'Paper ID is required' }, { status: 400 })
 
-    // Find paper index
-    const paperIndex = mockPapers.findIndex(p => p.id === id)
-    if (paperIndex === -1) {
-      return NextResponse.json(
-        { error: 'Paper not found' },
-        { status: 404 }
-      )
-    }
-
-    // Remove paper
-    const deletedPaper = mockPapers.splice(paperIndex, 1)[0]
-    return NextResponse.json({
-      success: true,
-      message: `Paper "${deletedPaper.title}" deleted successfully`
-    })
+    const supabase = getSupabaseForRequest(request)
+    const { error } = await supabase
+      .from('papers')
+      .delete()
+      .eq('id', id)
+    if (error) throw error
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in DELETE /api/papers:', error)
     return NextResponse.json(
@@ -186,3 +150,4 @@ export async function DELETE(request: NextRequest) {
     )
   }
 }
+

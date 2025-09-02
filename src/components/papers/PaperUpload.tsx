@@ -322,6 +322,27 @@ function PaperUploadComponent({
           { userId: user?.id, accessToken: session?.access_token }
         );
 
+        // Persist to Papers DB so it appears in lists (requires API auth header)
+        try {
+          const savedRes = await fetch('/api/papers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+            },
+            body: JSON.stringify(result.paper)
+          })
+          if (savedRes.ok) {
+            const savedPaper = await savedRes.json()
+            // Attach returned id to enable downstream analysis
+            result.paper.id = savedPaper.id
+          } else {
+            console.warn('Failed to persist paper to DB')
+          }
+        } catch (e) {
+          console.warn('Persist error:', e)
+        }
+
         // Mark as uploaded
         setFiles(prev => prev.map(f => 
           f.id === file.id ? { 
