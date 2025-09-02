@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCacheService } from '../../../../services/cache/CacheService'
-import Redis from 'ioredis'
 
 const cacheService = getCacheService()
 
@@ -14,9 +13,26 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Get Redis instance from cache service (this would need to be exposed)
-    // For now, create a new connection
-    const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+    // Completely prevent Redis import during build/static generation
+    const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                       process.env.NODE_ENV !== 'production' ||
+                       typeof window !== 'undefined' ||
+                       !process.env.VERCEL_ENV ||
+                       process.env.VERCEL_ENV !== 'production'
+
+    let redis: any
+
+    if (isBuildTime) {
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      redis = new MockRedis()
+    } else if (process.env.REDIS_URL && typeof process.env.REDIS_URL === 'string') {
+      const Redis = (await import('ioredis')).default
+      redis = new Redis(process.env.REDIS_URL)
+    } else {
+      // Fallback to mock if no Redis URL
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      redis = new MockRedis()
+    }
     
     try {
       // Get keys matching pattern

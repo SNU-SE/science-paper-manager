@@ -6,9 +6,10 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const nextConfig: NextConfig = {
-  // Minimal experimental configuration
+  // Disable package optimization to prevent server code bundling
   experimental: {
-    optimizePackageImports: ['@/components', '@/lib', '@/utils'],
+    // Temporarily disabled to prevent server-side imports in client bundle
+    // optimizePackageImports: ['@/components', '@/lib', '@/utils'],
   },
 
   // Image optimization
@@ -88,41 +89,61 @@ const nextConfig: NextConfig = {
     return 'build-' + Date.now()
   },
 
-  // Enhanced webpack configuration for server-only packages
+  // Targeted webpack configuration to prevent server-only imports
   webpack: (config, { isServer, webpack }) => {
-    // Only exclude server-only packages for client bundle
     if (!isServer) {
-      // Enhanced externals for server-only packages
+      // Strict externals for server-only packages
       config.externals = config.externals || [];
       
-      // Add server-only packages as externals
-      const serverOnlyPackages = {
-        'ioredis': 'ioredis',
-        'bullmq': 'bullmq',
-        'node-cron': 'node-cron',
-        'googleapis': 'googleapis',
-        'google-auth-library': 'google-auth-library',
-        'fs': 'fs',
-        'path': 'path',
-        'crypto': 'crypto',
-        'http': 'http',
-        'https': 'https',
-        'child_process': 'child_process'
-      };
+      // Function-based external to catch server-only imports
+      config.externals.push((context, request, callback) => {
+        // Block specific server-only packages
+        if (request === 'ioredis' || request.includes('ioredis')) {
+          return callback(null, 'commonjs ioredis');
+        }
+        if (request === 'bullmq' || request.includes('bullmq')) {
+          return callback(null, 'commonjs bullmq');
+        }
+        if (request === 'node-cron' || request.includes('node-cron')) {
+          return callback(null, 'commonjs node-cron');
+        }
+        callback();
+      });
 
-      config.externals.push(serverOnlyPackages);
-
-      // Ignore server-only directories in client builds
+      // Block server-only directory from client bundle
       config.plugins.push(
         new webpack.IgnorePlugin({
-          resourceRegExp: /^@\/server/,
+          resourceRegExp: /^@\/lib\/server/,
         })
       );
 
-      // Add alias to prevent server imports in client
+      // Add aliases to redirect server imports
       config.resolve.alias = {
         ...config.resolve.alias,
-        '@/server': false,
+        'ioredis': false,
+        'bullmq': false,
+        'node-cron': false,
+        '@/lib/server': false,
+      };
+
+      // Add fallback for Node.js modules
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+        stream: false,
+        util: false,
+        url: false,
+        zlib: false,
+        http: false,
+        https: false,
+        assert: false,
+        os: false,
+        path: false,
+        querystring: false,
+        child_process: false,
       };
     }
 

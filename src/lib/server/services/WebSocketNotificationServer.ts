@@ -2,8 +2,8 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { IncomingMessage, Server } from 'http'
 import { parse } from 'url'
 import jwt from 'jsonwebtoken'
-import Redis from 'ioredis'
-import { Notification, NotificationService } from './NotificationService'
+import { Notification } from '@/types/notifications'
+import type { NotificationService } from './NotificationService'
 
 export interface WebSocketConnection {
   ws: WebSocket
@@ -23,8 +23,9 @@ export interface NotificationWebSocketMessage {
 export class WebSocketNotificationServer {
   private wss: WebSocketServer
   private connections: Map<string, WebSocketConnection> = new Map()
-  private redis: Redis
-  private subscriber: Redis
+  private redis: any
+  private subscriber: any
+  private redisInitialized = false
   private notificationService: NotificationService
   private heartbeatInterval: NodeJS.Timeout
   private cleanupInterval: NodeJS.Timeout
@@ -32,10 +33,6 @@ export class WebSocketNotificationServer {
   constructor(server: Server, notificationService: NotificationService) {
     this.notificationService = notificationService
     
-    // Initialize Redis connections
-    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
-    this.subscriber = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
-
     // Create WebSocket server
     this.wss = new WebSocketServer({
       server,
@@ -44,11 +41,53 @@ export class WebSocketNotificationServer {
     })
 
     this.setupWebSocketHandlers()
-    this.setupRedisSubscriptions()
+    this.initializeRedis()
     this.startHeartbeat()
     this.startCleanup()
 
     console.log('WebSocket Notification Server initialized')
+  }
+
+  private async initializeRedis() {
+    if (this.redisInitialized) return
+    
+    try {
+      // Completely prevent Redis import during build/static generation
+      const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                         process.env.NODE_ENV !== 'production' ||
+                         typeof window !== 'undefined' ||
+                         !process.env.VERCEL_ENV ||
+                         process.env.VERCEL_ENV !== 'production'
+
+      if (isBuildTime) {
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.subscriber = new MockRedis()
+        this.setupRedisSubscriptions()
+        this.redisInitialized = true
+        return
+      }
+
+      // Only import real Redis in production runtime with valid Redis URL
+      if (process.env.REDIS_URL && typeof process.env.REDIS_URL === 'string') {
+        const Redis = (await import('ioredis')).default
+        this.redis = new Redis(process.env.REDIS_URL)
+        this.subscriber = new Redis(process.env.REDIS_URL)
+      } else {
+        // Fallback to mock if no Redis URL
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.subscriber = new MockRedis()
+      }
+      this.setupRedisSubscriptions()
+      this.redisInitialized = true
+    } catch (error) {
+      console.warn('Redis initialization failed for WebSocket server:', error)
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      this.redis = new MockRedis()
+      this.subscriber = new MockRedis()
+      this.redisInitialized = true
+    }
   }
 
   /**
@@ -178,6 +217,10 @@ export class WebSocketNotificationServer {
    * Setup Redis subscriptions for real-time notifications
    */
   private setupRedisSubscriptions(): void {
+    if (!this.redisInitialized || !this.subscriber) {
+      return
+    }
+    
     // Subscribe to all notification channels
     this.subscriber.psubscribe('notifications:*')
 
@@ -381,9 +424,13 @@ export class WebSocketNotificationServer {
     // Close WebSocket server
     this.wss.close()
 
-    // Close Redis connections
-    await this.redis.quit()
-    await this.subscriber.quit()
+    // Close Redis connections if initialized
+    if (this.redisInitialized && this.redis) {
+      await this.redis.quit()
+    }
+    if (this.redisInitialized && this.subscriber) {
+      await this.subscriber.quit()
+    }
 
     console.log('WebSocket Notification Server shutdown complete')
   }

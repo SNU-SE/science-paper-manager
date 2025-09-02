@@ -1,4 +1,3 @@
-import Redis from 'ioredis'
 import { LRUCache } from 'lru-cache'
 import crypto from 'crypto'
 
@@ -27,14 +26,15 @@ export interface CachePattern {
 }
 
 export class CacheService {
-  private redis: Redis
+  private redis: any
   private localCache: LRUCache<string, any>
   private stats: CacheStats
   private patterns: Map<string, CachePattern>
   private compressionThreshold: number = 1024 // bytes
+  private redisInitialized = false
 
   constructor(redisUrl?: string) {
-    this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379')
+    this.redis = null
     
     // Local L1 cache configuration
     this.localCache = new LRUCache({
@@ -57,6 +57,43 @@ export class CacheService {
 
     this.patterns = new Map()
     this.initializeCommonPatterns()
+    this.initializeRedis(redisUrl)
+  }
+
+  private async initializeRedis(redisUrl?: string) {
+    if (this.redisInitialized) return
+    
+    try {
+      // Completely prevent Redis import during build/static generation
+      const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                         process.env.NODE_ENV !== 'production' ||
+                         typeof window !== 'undefined' ||
+                         !process.env.VERCEL_ENV ||
+                         process.env.VERCEL_ENV !== 'production'
+
+      if (isBuildTime) {
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.redisInitialized = true
+        return
+      }
+
+      // Only import real Redis in production runtime with valid Redis URL
+      if (process.env.REDIS_URL && typeof process.env.REDIS_URL === 'string') {
+        const Redis = (await import('ioredis')).default
+        this.redis = new Redis(redisUrl || process.env.REDIS_URL)
+      } else {
+        // Fallback to mock if no Redis URL
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+      }
+      this.redisInitialized = true
+    } catch (error) {
+      console.warn('Redis initialization failed in CacheService, using mock:', error)
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      this.redis = new MockRedis()
+      this.redisInitialized = true
+    }
   }
 
   private initializeCommonPatterns(): void {

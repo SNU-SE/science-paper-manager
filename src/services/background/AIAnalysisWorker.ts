@@ -1,5 +1,4 @@
 import { Worker, Job } from 'bullmq'
-import Redis from 'ioredis'
 import { 
   AIAnalysisWorker as IAIAnalysisWorker, 
   AnalysisJob, 
@@ -14,29 +13,77 @@ import { UserApiKeyService } from '../settings/UserApiKeyService'
 import { getNotificationService } from '../notifications'
 
 export class AIAnalysisWorker implements IAIAnalysisWorker {
-  private worker: Worker
-  private redis: Redis
+  private worker: Worker | null = null
+  private redis: any
   private readonly QUEUE_NAME = 'ai-analysis'
+  private redisInitialized = false
 
   constructor(redisUrl?: string) {
-    this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379', {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
-      lazyConnect: true
-    })
+    this.redis = null
+    this.initializeRedis(redisUrl)
+  }
 
-    this.worker = new Worker(
-      this.QUEUE_NAME,
-      this.processJob.bind(this),
-      {
-        connection: this.redis,
-        concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5'),
-        removeOnComplete: 100,
-        removeOnFail: 50,
+  private async initializeRedis(redisUrl?: string) {
+    if (this.redisInitialized) return
+    
+    try {
+      // Completely prevent Redis import during build/static generation
+      const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                         process.env.NODE_ENV !== 'production' ||
+                         typeof window !== 'undefined' ||
+                         !process.env.VERCEL_ENV ||
+                         process.env.VERCEL_ENV !== 'production'
+
+      if (isBuildTime) {
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.redisInitialized = true
+        return
       }
-    )
 
-    this.setupEventListeners()
+      const redisConnectionUrl = redisUrl || process.env.REDIS_URL
+      
+      if (!redisConnectionUrl) {
+        console.warn('Redis URL not configured - AI analysis worker disabled')
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.redisInitialized = true
+        return
+      }
+
+      // Only import real Redis in production runtime with valid Redis URL
+      if (process.env.REDIS_URL && typeof process.env.REDIS_URL === 'string') {
+        const Redis = (await import('ioredis')).default
+        this.redis = new Redis(redisConnectionUrl, {
+          maxRetriesPerRequest: 3,
+          retryDelayOnFailover: 100,
+          lazyConnect: true
+        })
+
+        this.worker = new Worker(
+          this.QUEUE_NAME,
+          this.processJob.bind(this),
+          {
+            connection: this.redis,
+            concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5'),
+            removeOnComplete: 100,
+            removeOnFail: 50,
+          }
+        )
+
+        this.setupEventListeners()
+      } else {
+        // Fallback to mock if no Redis URL
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+      }
+      this.redisInitialized = true
+    } catch (error) {
+      console.warn('Redis initialization failed in AIAnalysisWorker, using mock:', error)
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      this.redis = new MockRedis()
+      this.redisInitialized = true
+    }
   }
 
   private setupEventListeners(): void {

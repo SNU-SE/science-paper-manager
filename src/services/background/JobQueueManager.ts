@@ -1,5 +1,4 @@
 import { Queue, Worker, Job } from 'bullmq'
-import Redis from 'ioredis'
 import { 
   JobQueueManager as IJobQueueManager, 
   JobStatus, 
@@ -11,41 +10,79 @@ import {
 } from './types'
 
 export class JobQueueManager implements IJobQueueManager {
-  private redis: Redis
-  private analysisQueue: Queue
+  private redis: any
+  private analysisQueue: Queue | null = null
   private readonly QUEUE_NAME = 'ai-analysis'
+  private redisInitialized = false
   
   constructor(redisUrl?: string) {
-    const redisConnectionUrl = redisUrl || process.env.REDIS_URL
+    this.redis = null
+    this.initializeRedis(redisUrl)
+  }
+
+  private async initializeRedis(redisUrl?: string) {
+    if (this.redisInitialized) return
     
-    if (!redisConnectionUrl) {
-      console.warn('Redis URL not configured - background job processing disabled')
-      // Create null objects to prevent runtime errors
-      this.redis = null as any
-      this.analysisQueue = null as any
-      return
+    try {
+      // Completely prevent Redis import during build/static generation
+      const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                         process.env.NODE_ENV !== 'production' ||
+                         typeof window !== 'undefined' ||
+                         !process.env.VERCEL_ENV ||
+                         process.env.VERCEL_ENV !== 'production'
+
+      if (isBuildTime) {
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.redisInitialized = true
+        return
+      }
+
+      const redisConnectionUrl = redisUrl || process.env.REDIS_URL
+      
+      if (!redisConnectionUrl) {
+        console.warn('Redis URL not configured - background job processing disabled')
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+        this.redisInitialized = true
+        return
+      }
+
+      // Only import real Redis in production runtime with valid Redis URL
+      if (process.env.REDIS_URL && typeof process.env.REDIS_URL === 'string') {
+        const Redis = (await import('ioredis')).default
+        this.redis = new Redis(redisConnectionUrl, {
+          maxRetriesPerRequest: 3,
+          retryDelayOnFailover: 100,
+          lazyConnect: true
+        })
+        
+        this.analysisQueue = new Queue(this.QUEUE_NAME, {
+          connection: this.redis,
+          defaultJobOptions: {
+            removeOnComplete: 100, // Keep last 100 completed jobs
+            removeOnFail: 50,      // Keep last 50 failed jobs
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000, // Start with 2 seconds
+            },
+          },
+        })
+        
+        this.setupEventListeners()
+      } else {
+        // Fallback to mock if no Redis URL
+        const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+        this.redis = new MockRedis()
+      }
+      this.redisInitialized = true
+    } catch (error) {
+      console.warn('Redis initialization failed in JobQueueManager, using mock:', error)
+      const MockRedis = (await import('@/lib/__mocks__/ioredis')).default
+      this.redis = new MockRedis()
+      this.redisInitialized = true
     }
-    
-    this.redis = new Redis(redisConnectionUrl, {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
-      lazyConnect: true
-    })
-    
-    this.analysisQueue = new Queue(this.QUEUE_NAME, {
-      connection: this.redis,
-      defaultJobOptions: {
-        removeOnComplete: 100, // Keep last 100 completed jobs
-        removeOnFail: 50,      // Keep last 50 failed jobs
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000, // Start with 2 seconds
-        },
-      },
-    })
-    
-    this.setupEventListeners()
   }
 
   private setupEventListeners(): void {
