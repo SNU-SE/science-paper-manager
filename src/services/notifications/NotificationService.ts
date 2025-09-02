@@ -1,4 +1,3 @@
-import Redis from 'ioredis'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
@@ -23,16 +22,38 @@ export type {
  * Enhanced service for managing user notifications with database persistence and real-time delivery
  */
 export class NotificationService {
-  private redis: Redis
+  private redis: any // Dynamic Redis instance
   private supabase: SupabaseClient<Database>
+  private redisInitialized = false
 
   constructor(supabase: SupabaseClient<Database>, redisUrl?: string) {
     this.supabase = supabase
-    this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379', {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
-      lazyConnect: true
-    })
+    this.initializeRedis(redisUrl)
+  }
+
+  private async initializeRedis(redisUrl?: string) {
+    if (this.redisInitialized) return
+    
+    try {
+      if (typeof window !== 'undefined') {
+        // We're on the client side, don't initialize Redis
+        this.redis = null
+        this.redisInitialized = true
+        return
+      }
+      
+      const Redis = (await import('ioredis')).default
+      this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379', {
+        maxRetriesPerRequest: 3,
+        retryDelayOnFailover: 100,
+        lazyConnect: true
+      })
+      this.redisInitialized = true
+    } catch (error) {
+      console.warn('Redis not available, notifications will work without caching:', error)
+      this.redis = null
+      this.redisInitialized = true
+    }
   }
 
   /**

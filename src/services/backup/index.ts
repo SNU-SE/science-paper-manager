@@ -1,4 +1,4 @@
-export { BackupService } from './BackupService'
+export { BackupService, createBackupService, getBackupService } from './BackupService'
 export type {
   BackupResult,
   BackupSchedule,

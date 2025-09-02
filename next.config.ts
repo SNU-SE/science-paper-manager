@@ -88,19 +88,42 @@ const nextConfig: NextConfig = {
     return 'build-' + Date.now()
   },
 
-  // Minimal webpack configuration for server-only packages
-  webpack: (config, { isServer }) => {
+  // Enhanced webpack configuration for server-only packages
+  webpack: (config, { isServer, webpack }) => {
     // Only exclude server-only packages for client bundle
     if (!isServer) {
-      // Simple externals for server-only packages
+      // Enhanced externals for server-only packages
       config.externals = config.externals || [];
-      config.externals.push({
-        googleapis: 'googleapis',
-        'google-auth-library': 'google-auth-library',
-        ioredis: 'ioredis',
-        bullmq: 'bullmq',
+      
+      // Add server-only packages as externals
+      const serverOnlyPackages = {
+        'ioredis': 'ioredis',
+        'bullmq': 'bullmq',
         'node-cron': 'node-cron',
-      });
+        'googleapis': 'googleapis',
+        'google-auth-library': 'google-auth-library',
+        'fs': 'fs',
+        'path': 'path',
+        'crypto': 'crypto',
+        'http': 'http',
+        'https': 'https',
+        'child_process': 'child_process'
+      };
+
+      config.externals.push(serverOnlyPackages);
+
+      // Ignore server-only directories in client builds
+      config.plugins.push(
+        new webpack.IgnorePlugin({
+          resourceRegExp: /^@\/server/,
+        })
+      );
+
+      // Add alias to prevent server imports in client
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@/server': false,
+      };
     }
 
     return config;
