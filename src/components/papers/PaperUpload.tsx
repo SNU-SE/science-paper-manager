@@ -987,9 +987,22 @@ function FileMetadataForm({
 
       {!file.isUploaded && (
         <CardContent className="space-y-4">
+          {file.metadataFilling && (
+            <div className="text-sm text-gray-500 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Auto-filling metadata with AI...
+            </div>
+          )}
+          {!file.metadataFilling && file.metadataAutoFilled && (
+            <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1 inline-block">
+              Metadata auto-filled by AI
+            </div>
+          )}
+
+          {!file.metadataFilling && (
           {/* Title */}
           <div>
-            <Label htmlFor={`title-${file.id}`}>Title *</Label>
+            <Label htmlFor={`title-${file.id}`}>Title</Label>
             <Input
               id={`title-${file.id}`}
               value={file.title}
@@ -1084,6 +1097,7 @@ function FileMetadataForm({
               rows={3}
             />
           </div>
+          )}
         </CardContent>
       )}
     </Card>
