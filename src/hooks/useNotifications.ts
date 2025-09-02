@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { 
+import type { 
   Notification, 
   NotificationStats,
   NotificationSettings 
-} from '@/services/notifications/NotificationService'
+} from '@/types/notifications'
 
 interface UseNotificationsReturn {
   notifications: Notification[]
