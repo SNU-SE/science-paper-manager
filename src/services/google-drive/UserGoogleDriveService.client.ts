@@ -136,12 +136,15 @@ export class UserGoogleDriveServiceClient {
    */
   async testConnection(userId: string): Promise<boolean> {
     try {
+      // include access token so server can use RLS without service key
+      const sessionRes = await this.supabase.auth.getSession()
+      const accessToken = sessionRes.data.session?.access_token
       const response = await fetch('/api/google-drive/test-connection', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, accessToken }),
       })
 
       if (!response.ok) {

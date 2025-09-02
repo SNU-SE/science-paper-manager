@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleDriveService } from '@/lib/google-drive';
 import { UserGoogleDriveService } from '@/services/google-drive/UserGoogleDriveService'
+import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
     const journal = formData.get('journal') as string;
     const paperTitle = formData.get('paperTitle') as string;
     const userId = formData.get('userId') as string | null;
+    const accessToken = formData.get('accessToken') as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -26,8 +28,30 @@ export async function POST(request: NextRequest) {
 
     if (userId) {
       try {
-        const userDrive = new UserGoogleDriveService()
-        const settings = await userDrive.getUserSettings(userId)
+        let settings: any = null
+        try {
+          const userDrive = new UserGoogleDriveService()
+          settings = await userDrive.getUserSettings(userId)
+        } catch (e) {
+          // Fallback to anon client with user's access token
+          if (!accessToken || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+            return NextResponse.json({ error: 'Missing access token or Supabase config' }, { status: 500 })
+          }
+          const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+            global: { headers: { Authorization: `Bearer ${accessToken}` } },
+            auth: { persistSession: false, autoRefreshToken: false }
+          })
+          const { data, error } = await supabase
+            .from('user_google_drive_settings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .single()
+          if (error && (error as any).code !== 'PGRST116') {
+            throw error
+          }
+          settings = data
+        }
         if (!settings) {
           return NextResponse.json(
             { error: 'Google Drive not configured for this user' },

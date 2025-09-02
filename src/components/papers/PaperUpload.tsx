@@ -100,7 +100,7 @@ function PaperUploadComponent({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { startAnalysis, apiKeys, hasValidApiKey } = useAIAnalysis();
   const { showError, showSuccess, showWarning } = useErrorToast();
-  const { user } = useAuth();
+  const { user, session } = useAuth() as any;
   
   // Retry mechanism for upload operations
   const uploadRetry = useRetry(
@@ -319,7 +319,7 @@ function PaperUploadComponent({
               f.id === file.id ? { ...f, uploadProgress: progress } : f
             ));
           },
-          { userId: user?.id }
+          { userId: user?.id, accessToken: session?.access_token }
         );
 
         // Mark as uploaded

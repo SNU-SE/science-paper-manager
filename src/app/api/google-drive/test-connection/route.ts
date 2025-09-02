@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { UserGoogleDriveService } from '@/services/google-drive/UserGoogleDriveService'
+import { createClient } from '@supabase/supabase-js'
 import { google } from 'googleapis'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json()
+    const { userId, accessToken } = await request.json()
 
     if (!userId) {
       return NextResponse.json(
@@ -15,9 +16,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userGoogleDriveService = new UserGoogleDriveService()
-    // Get user's Google Drive settings from database (server-side, admin client)
-    const userSettings = await userGoogleDriveService.getUserSettings(userId)
+    let userSettings: any = null
+    // Try admin client first (requires SUPABASE_SERVICE_ROLE_KEY)
+    try {
+      const userGoogleDriveService = new UserGoogleDriveService()
+      userSettings = await userGoogleDriveService.getUserSettings(userId)
+    } catch (e) {
+      // Fallback: use anon client with user's access token if provided
+      if (!accessToken || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        throw new Error('Supabase configuration missing or no access token provided')
+      }
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+        auth: { persistSession: false, autoRefreshToken: false }
+      })
+      const { data, error } = await supabase
+        .from('user_google_drive_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single()
+      if (error && (error as any).code !== 'PGRST116') {
+        throw error
+      }
+      userSettings = data
+    }
     
     if (!userSettings) {
       return NextResponse.json(

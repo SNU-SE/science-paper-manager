@@ -91,7 +91,7 @@ export class PaperUploadService {
   async uploadPaper(
     paperData: PaperUploadData,
     onProgress?: (progress: UploadProgress) => void,
-    opts?: { userId?: string }
+    opts?: { userId?: string; accessToken?: string }
   ): Promise<{ paper: Partial<Paper>; uploadResult: UploadResult }> {
     try {
       // Stage 1: Validation
@@ -127,6 +127,7 @@ export class PaperUploadService {
       formData.append('journal', journal);
       formData.append('paperTitle', paperTitle);
       if (opts?.userId) formData.append('userId', opts.userId);
+      if (opts?.accessToken) formData.append('accessToken', opts.accessToken);
 
       const response = await fetch('/api/google-drive/upload', {
         method: 'POST',
