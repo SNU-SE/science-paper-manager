@@ -83,7 +83,10 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single()
-    if (error) throw error
+    if (error) {
+      console.error('DB insert error (/api/papers POST):', error)
+      return NextResponse.json({ error: 'Failed to insert paper', details: (error as any).message || String(error), code: (error as any).code }, { status: 500 })
+    }
     return NextResponse.json(data)
   } catch (error) {
     console.error('Error in POST /api/papers:', error)
@@ -150,4 +153,3 @@ export async function DELETE(request: NextRequest) {
     )
   }
 }
-
