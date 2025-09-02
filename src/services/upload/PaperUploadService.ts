@@ -52,10 +52,11 @@ export class PaperUploadService {
       throw new Error('Only PDF files are allowed');
     }
 
-    // Check file size (max 50MB)
-    const maxSize = 50 * 1024 * 1024; // 50MB
+    // Check file size (allow large files; resumable upload handles this)
+    const maxSize = 1 * 1024 * 1024 * 1024; // 1GB soft limit
     if (file.size > maxSize) {
-      throw new Error('File size must be less than 50MB');
+      // Soft warning: continue, resumable upload can still work
+      console.warn('Large file detected; proceeding with resumable upload');
     }
 
     // Check file name

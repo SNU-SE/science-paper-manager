@@ -638,7 +638,7 @@ function PaperUploadComponent({
               Drop PDF files here or click to browse
             </p>
             <p className="text-sm text-gray-500 mb-4">
-              Supports multiple PDF files up to 50MB each
+              Supports large PDF files (chunked upload)
             </p>
             <Input
               type="file"

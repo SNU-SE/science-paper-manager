@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { PaperUpload } from './PaperUpload';
 import { GoogleDriveViewer } from './GoogleDriveViewer';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { UserGoogleDriveServiceClient } from '@/services/google-drive/UserGoogleDriveService.client'
 import { useGoogleDriveUpload } from '@/hooks/useGoogleDriveUpload';
 import { PaperUploadService } from '@/services/upload/PaperUploadService';
 import { Paper } from '@/types';
@@ -34,6 +36,7 @@ export function PaperUploadPage({ onPapersUploaded }: PaperUploadPageProps) {
   } | null>(null);
   const [selectedPaper, setSelectedPaper] = useState<Partial<Paper> | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
+  const { user } = useAuth();
 
   const {
     isUploading,
@@ -55,18 +58,24 @@ export function PaperUploadPage({ onPapersUploaded }: PaperUploadPageProps) {
   });
 
   useEffect(() => {
-    // Check if Google Drive is configured
-    const checkConfiguration = () => {
-      const hasClientId = !!process.env.NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID;
-      const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-      const hasRedirectUri = !!process.env.GOOGLE_DRIVE_REDIRECT_URI;
-      
-      setIsConfigured(hasClientId && hasClientSecret && hasRedirectUri);
+    // Check per-user Google Drive configuration via test-connection
+    const checkConfiguration = async () => {
+      try {
+        if (!user?.id) {
+          setIsConfigured(false);
+          return;
+        }
+        const client = new UserGoogleDriveServiceClient();
+        const ok = await client.testConnection(user.id);
+        setIsConfigured(ok);
+      } catch {
+        setIsConfigured(false);
+      }
     };
 
     checkConfiguration();
     loadUploadStats();
-  }, []);
+  }, [user?.id]);
 
   const loadUploadStats = async () => {
     try {
