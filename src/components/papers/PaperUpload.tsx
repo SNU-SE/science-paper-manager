@@ -1021,8 +1021,9 @@ function FileMetadataForm({
           )}
 
           {!file.metadataFilling && (
-          {/* Title */}
-          <div>
+            <>
+            {/* Title */}
+            <div>
             <Label htmlFor={`title-${file.id}`}>Title</Label>
             <Input
               id={`title-${file.id}`}
@@ -1118,6 +1119,7 @@ function FileMetadataForm({
               rows={3}
             />
           </div>
+          </>
           )}
         </CardContent>
       )}
