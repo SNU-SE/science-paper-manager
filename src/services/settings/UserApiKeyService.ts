@@ -104,7 +104,7 @@ export class UserApiKeyService {
         .select('api_key_encrypted')
         .eq('user_id', userId)
         .eq('provider', provider)
-        .single()
+        .maybeSingle()
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         const authError = handleAuthError(error)
@@ -145,12 +145,12 @@ export class UserApiKeyService {
       const keyHash = this.createApiKeyHash(keyData.apiKey)
 
       // Check if key already exists
-      const { data: existing } = await this.supabase
+      const { data: existing, error: existErr } = await this.supabase
         .from('user_api_keys')
         .select('id')
         .eq('user_id', userId)
         .eq('provider', keyData.provider)
-        .single()
+        .maybeSingle()
 
       let result
 
