@@ -22,9 +22,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Google Drive not configured for this user' 
+          error: 'Google Drive not configured for this user',
+          requiresSetup: true
         },
-        { status: 404 }
+        { status: 200 }
       )
     }
 
@@ -33,9 +34,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Google Drive credentials not configured' 
+          error: 'Google Drive credentials not configured',
+          requiresSetup: true
         },
-        { status: 400 }
+        { status: 200 }
       )
     }
 
@@ -44,9 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Google Drive not authorized. Please complete OAuth flow.' 
+          error: 'Google Drive not authorized. Please complete OAuth flow.',
+          requiresAuth: true
         },
-        { status: 401 }
+        { status: 200 }
       )
     }
 
@@ -82,8 +85,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Failed to connect to Google Drive. Please re-authorize.',
-        details: oauthError instanceof Error ? oauthError.message : 'Unknown error'
-      }, { status: 401 })
+        details: oauthError instanceof Error ? oauthError.message : 'Unknown error',
+        requiresAuth: true
+      }, { status: 200 })
     }
   } catch (error) {
     console.error('Google Drive connection test error:', error)
