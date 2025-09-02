@@ -667,7 +667,7 @@ function PaperUploadComponent({
                 onCheckedChange={setEnableAutoFill}
                 disabled={!(hasValidApiKey('openai') || hasDbOpenAIKey)}
               />
-              {!(hasValidApiKey('openai') || hasDbOpenAIKey)) && (
+              {!(hasValidApiKey('openai') || hasDbOpenAIKey) && (
                 <span className="text-xs text-gray-500">Requires OpenAI API key</span>
               )}
             </div>
