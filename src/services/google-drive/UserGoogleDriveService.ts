@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/lib/database'
+import { getSupabaseAdminClient } from '@/lib/database'
 import { UserGoogleDriveSettings, UserGoogleDriveSettingsInsert, UserGoogleDriveSettingsUpdate } from '@/lib/database'
 import { GoogleDriveService } from '@/lib/google-drive'
 
@@ -11,7 +11,7 @@ export interface UserGoogleDriveConfig {
 }
 
 export class UserGoogleDriveService {
-  private supabase = getSupabaseClient()
+  private supabase = getSupabaseAdminClient()
 
   /**
    * Get user's Google Drive settings

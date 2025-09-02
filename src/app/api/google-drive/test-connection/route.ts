@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { UserGoogleDriveServiceClient } from '@/services/google-drive/UserGoogleDriveService.client'
+import { UserGoogleDriveService } from '@/services/google-drive/UserGoogleDriveService'
 import { google } from 'googleapis'
+
+export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,9 +15,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userGoogleDriveService = new UserGoogleDriveServiceClient()
-    
-    // Get user's Google Drive settings from database
+    const userGoogleDriveService = new UserGoogleDriveService()
+    // Get user's Google Drive settings from database (server-side, admin client)
     const userSettings = await userGoogleDriveService.getUserSettings(userId)
     
     if (!userSettings) {
