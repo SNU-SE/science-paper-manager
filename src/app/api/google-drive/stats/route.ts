@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleDriveService } from '@/lib/google-drive';
 
+export const runtime = 'nodejs'
+
 export async function GET(request: NextRequest) {
   try {
     // Validate required environment variables

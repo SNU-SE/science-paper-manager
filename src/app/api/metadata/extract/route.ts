@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { extractBasicPdfMetadata } from '@/lib/pdf-metadata'
 
+export const runtime = 'nodejs'
+
 type MetadataResponse = {
   title?: string
   authors?: string[]
@@ -100,4 +102,3 @@ ${preview}
     return NextResponse.json({ error: 'Failed to extract metadata' }, { status: 500 })
   }
 }
-

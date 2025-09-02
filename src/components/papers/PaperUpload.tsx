@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PaperUploadService, PaperUploadData, UploadProgress } from '@/services/upload/PaperUploadService';
 import { Paper, AIModel } from '@/types';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { AIModelSelector } from '@/components/ai/AIModelSelector';
 import { useAIAnalysis } from '@/hooks/useAIAnalysis';
 import { useErrorToast } from '@/hooks/useErrorToast';
@@ -99,6 +100,7 @@ function PaperUploadComponent({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { startAnalysis, apiKeys, hasValidApiKey } = useAIAnalysis();
   const { showError, showSuccess, showWarning } = useErrorToast();
+  const { user } = useAuth();
   
   // Retry mechanism for upload operations
   const uploadRetry = useRetry(
@@ -316,7 +318,8 @@ function PaperUploadComponent({
             setFiles(prev => prev.map(f => 
               f.id === file.id ? { ...f, uploadProgress: progress } : f
             ));
-          }
+          },
+          { userId: user?.id }
         );
 
         // Mark as uploaded
