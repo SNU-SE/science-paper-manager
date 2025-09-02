@@ -111,39 +111,79 @@ export class PaperUploadService {
       });
 
       const { year, journal, paperTitle } = this.generateFolderPath(paperData);
-      const fileBuffer = Buffer.from(await paperData.file.arrayBuffer());
 
-      // Stage 3: Upload to Google Drive
-      onProgress?.({
-        stage: 'uploading',
-        progress: 50,
-        message: 'Uploading to Google Drive...'
-      });
+      // Stage 3: Start resumable upload session
+      onProgress?.({ stage: 'uploading', progress: 30, message: 'Starting upload session...' });
 
-      // Upload via API route instead of direct service call
-      const formData = new FormData();
-      formData.append('file', paperData.file);
-      formData.append('year', year);
-      formData.append('journal', journal);
-      formData.append('paperTitle', paperTitle);
-      if (opts?.userId) formData.append('userId', opts.userId);
-      if (opts?.accessToken) formData.append('accessToken', opts.accessToken);
+      const startForm = new FormData();
+      startForm.append('action', 'start');
+      startForm.append('fileName', paperData.file.name);
+      startForm.append('totalSize', String(paperData.file.size));
+      startForm.append('year', year);
+      startForm.append('journal', journal);
+      startForm.append('paperTitle', paperTitle);
+      if (opts?.userId) startForm.append('userId', opts.userId);
+      if (opts?.accessToken) startForm.append('accessToken', opts.accessToken);
 
-      const response = await fetch('/api/google-drive/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      const startRes = await fetch('/api/google-drive/upload', { method: 'POST', body: startForm });
+      if (!startRes.ok) {
+        const errText = await startRes.text();
+        throw new Error(`Failed to start upload: ${errText}`);
+      }
+      const { uploadUrl } = await startRes.json();
 
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+      // Stage 4: Upload chunks
+      const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+      const total = paperData.file.size;
+      let uploaded = 0;
+      let finalResult: UploadResult | null = null;
+
+      while (uploaded < total) {
+        const start = uploaded;
+        const end = Math.min(uploaded + CHUNK_SIZE, total) - 1;
+        const chunkBlob = paperData.file.slice(start, end + 1);
+
+        const chunkForm = new FormData();
+        chunkForm.append('action', 'chunk');
+        chunkForm.append('uploadUrl', uploadUrl);
+        chunkForm.append('chunkStart', String(start));
+        chunkForm.append('chunkEnd', String(end));
+        chunkForm.append('totalSize', String(total));
+        chunkForm.append('chunk', chunkBlob, `${paperData.file.name}.part`);
+        chunkForm.append('year', year);
+        chunkForm.append('journal', journal);
+        chunkForm.append('paperTitle', paperTitle);
+
+        const res = await fetch('/api/google-drive/upload', { method: 'POST', body: chunkForm });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Chunk upload failed: ${errText}`);
+        }
+        const data = await res.json();
+
+        uploaded = end + 1;
+        const pct = Math.min(99, Math.floor((uploaded / total) * 100));
+        onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading... ${pct}%` });
+
+        if (data && data.fileId) {
+          finalResult = {
+            fileId: data.fileId,
+            fileName: data.fileName,
+            webViewLink: data.webViewLink,
+            webContentLink: data.webContentLink,
+            folderPath: data.folderPath,
+          };
+        }
       }
 
-      const uploadResult: UploadResult = await response.json();
+      if (!finalResult) {
+        throw new Error('Upload did not finalize properly');
+      }
 
-      // Stage 4: Create paper object
+      // Stage 5: Create paper object
       onProgress?.({
         stage: 'processing',
-        progress: 80,
+        progress: 95,
         message: 'Processing paper data...'
       });
 
@@ -154,22 +194,22 @@ export class PaperUploadService {
         publicationYear: paperData.publicationYear,
         doi: paperData.doi,
         abstract: paperData.abstract,
-        googleDriveId: uploadResult.fileId,
-        googleDriveUrl: uploadResult.webViewLink,
-        pdfPath: uploadResult.folderPath,
+        googleDriveId: finalResult.fileId,
+        googleDriveUrl: finalResult.webViewLink,
+        pdfPath: finalResult.folderPath,
         readingStatus: 'unread',
         dateAdded: new Date(),
         lastModified: new Date()
       };
 
-      // Stage 5: Complete
+      // Stage 6: Complete
       onProgress?.({
         stage: 'complete',
         progress: 100,
         message: 'Upload completed successfully!'
       });
 
-      return { paper, uploadResult };
+      return { paper, uploadResult: finalResult };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
